@@ -182,7 +182,7 @@ impl State {
 
         self.pipeline
             .set_state(gst::State::Ready)
-            .expect("Can set state to null");
+            .expect("Can set state to ready");
 
         let http_src = self
             .pipeline
@@ -233,9 +233,9 @@ impl State {
         self.pipeline
             .set_state(gst::State::Paused)
             .expect("Can set state to null");
-        let http_src = self
+        self
             .pipeline
-            .get_by_name("http-source")
+            .get_by_name("volume")
             .expect("Http source should be registered")
             .set_property("volume", &volume);
     }
