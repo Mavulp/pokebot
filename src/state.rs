@@ -167,7 +167,7 @@ impl State {
     }
 
     pub fn add_audio<'a>(&self, uri: String) {
-        let ytdl_args = ["-f", "bestaudio", "-g", &uri, "-o", "-"];
+        let ytdl_args = ["-f", "bestaudio/best", "-g", &uri, "-o", "-"];
 
         let ytdl_output = Command::new("youtube-dl")
             .args(&ytdl_args)
@@ -236,7 +236,7 @@ impl State {
         self
             .pipeline
             .get_by_name("volume")
-            .expect("Http source should be registered")
+            .expect("Volume filter should be registered")
             .set_property("volume", &volume);
     }
 
