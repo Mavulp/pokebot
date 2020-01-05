@@ -1,5 +1,5 @@
 [package]
-name = "ts3bot-test"
+name = "pokebot"
 version = "0.1.0"
 authors = ["Jokler <jokler.contact@gmail.com>"]
 edition = "2018"
@@ -7,11 +7,11 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tsclientlib = { path = "../tsclientlib/tsclientlib" }
-tsproto-packets = { path = "../tsclientlib/utils/tsproto-packets" }
+tsclientlib = { git = "https://github.com/ReSpeak/tsclientlib/" }
+tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib/" }
 structopt = "0.2"
-
 tokio = "0.1.0"
+tokio2 = { package = "tokio", version = "0.2.0", features = ["tcp", "io-util"] }
 futures-preview = { version = "=0.3.0-alpha.19", features = ["compat"] }
 futures01 = { package = "futures", version = "0.1" }
 tokio-signal = "0.2.7"
