@@ -9,7 +9,7 @@ use futures::{
 use futures01::{future::Future, sink::Sink};
 
 use futures_util::stream::StreamExt;
-use tsclientlib::{Connection, DisconnectOptions};
+use tsclientlib::{Connection, MessageTarget, DisconnectOptions};
 
 use gst::prelude::*;
 use gstreamer as gst;
@@ -186,6 +186,20 @@ impl State {
             .unwrap();
 
         if ytdl_output.status.success() == false {
+            tokio::spawn(
+                self.conn
+                .lock()
+                .to_mut()
+                .set_name("PokeBot")
+                .map_err(|_| println!("Failed to change name")),
+            );
+            tokio::spawn(
+                self.conn
+                .lock()
+                .to_mut()
+                .send_message(MessageTarget::Channel, "Failed to load url")
+                .map_err(|_| println!("Failed to change name")),
+            );
             return;
         }
         let dl_url: &str = &String::from_utf8(ytdl_output.stderr).unwrap();
