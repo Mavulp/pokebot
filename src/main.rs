@@ -175,7 +175,7 @@ fn handle_event<'a>(state: &State, conn: &ConnectionLock<'a>, event: &Event) {
                         }
                         Some("volume") => {
                             if let Ok(volume) = f64::from_str(tokens[1]) {
-                                state.volume(volume);
+                                state.volume(volume / 100.0);
                             }
                         }
                         Some("play") => {
