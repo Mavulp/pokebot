@@ -187,9 +187,6 @@ fn handle_event<'a>(state: &State, conn: &ConnectionLock<'a>, event: &Event) {
                         Some("stop") => {
                             state.stop();
                         }
-                        Some("quit") => {
-                            //tokio::spawn(state.disconnect().unit_error().boxed().compat());
-                        }
                         _ => (),
                     };
                 }
