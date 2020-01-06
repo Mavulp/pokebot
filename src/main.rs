@@ -1,6 +1,6 @@
-use std::str::FromStr;
 use std::io::Read;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use futures::{
     compat::Future01CompatExt,
@@ -79,23 +79,23 @@ async fn async_main() {
         .log_udp_packets(args.verbose >= 3);
 
     //let (disconnect_send, disconnect_recv) = mpsc::unbounded();
-    let con = Connection::new(con_config).compat().await.unwrap();
+    let conn = Connection::new(con_config).compat().await.unwrap();
 
-    let mut state = State::new(con.clone());
+    let mut state = State::new(conn.clone());
     {
-        let packet = con.lock().server.set_subscribed(true);
-        con.send_packet(packet).compat().await;
+        let packet = conn.lock().server.set_subscribed(true);
+        conn.send_packet(packet).compat().await;
     }
     //con.add_on_disconnect(Box::new( || {
     //disconnect_send.unbounded_send(()).unwrap()
     //}));
     let inner_state = state.clone();
-    con.add_event_listener(
+    conn.add_event_listener(
         String::from("listener"),
         Box::new(move |e| {
-            if let ConEvents(con, events) = e {
+            if let ConEvents(conn, events) = e {
                 for event in *events {
-                    handle_event(&inner_state, &con, event);
+                    handle_event(&inner_state, &conn, event);
                 }
             }
         }),
@@ -110,7 +110,7 @@ async fn async_main() {
     //let ctrlc_fut = ctrl_c.into_future().compat().fuse();
     //ctrlc_fut.await.map_err(|(e, _)| e).unwrap();
 
-    con.disconnect(DisconnectOptions::new())
+    conn.disconnect(DisconnectOptions::new())
         .compat()
         .await
         .unwrap();
@@ -119,7 +119,7 @@ async fn async_main() {
     std::process::exit(0);
 }
 
-fn handle_event<'a>(state: &State, con: &ConnectionLock<'a>, event: &Event) {
+fn handle_event<'a>(state: &State, conn: &ConnectionLock<'a>, event: &Event) {
     match event {
         Event::Message {
             from: target,
@@ -127,21 +127,25 @@ fn handle_event<'a>(state: &State, con: &ConnectionLock<'a>, event: &Event) {
             message: msg,
         } => {
             if let MessageTarget::Poke(who) = target {
-                let channel = con.clients.get(&who).expect("can find poke sender").channel;
+                let channel = conn
+                    .clients
+                    .get(&who)
+                    .expect("can find poke sender")
+                    .channel;
                 tokio::spawn(
-                    con.to_mut()
-                        .get_client(&con.own_client)
+                    conn.to_mut()
+                        .get_client(&conn.own_client)
                         .expect("can get myself")
                         .set_channel(channel)
                         .map_err(|e| error!("Failed to switch channel: {}", e)),
                 );
-            } else if sender.id != con.own_client {
+            } else if sender.id != conn.own_client {
                 if msg.starts_with("!") {
                     let tokens = msg[1..].split_whitespace().collect::<Vec<_>>();
                     match tokens.get(0).map(|t| *t) {
                         Some("test") => {
                             tokio::spawn(
-                                con.to_mut()
+                                conn.to_mut()
                                     .send_message(*target, "works :)")
                                     .map_err(|_| ()),
                             );
@@ -150,6 +154,9 @@ fn handle_event<'a>(state: &State, con: &ConnectionLock<'a>, event: &Event) {
                             let mut invalid = false;
                             if let Some(url) = &tokens.get(1) {
                                 if url.len() > 11 {
+                                    tokio::spawn(
+                                        conn.to_mut().set_name("PokeBot - Loading").map_err(|_| ()),
+                                    );
                                     let trimmed = url[5..url.len() - 6].to_owned();
                                     state.add_audio(trimmed);
                                 } else {
@@ -160,7 +167,7 @@ fn handle_event<'a>(state: &State, con: &ConnectionLock<'a>, event: &Event) {
                             }
                             if invalid {
                                 tokio::spawn(
-                                    con.to_mut()
+                                    conn.to_mut()
                                         .send_message(MessageTarget::Channel, "Invalid Url")
                                         .map_err(|_| ()),
                                 );
@@ -168,7 +175,7 @@ fn handle_event<'a>(state: &State, con: &ConnectionLock<'a>, event: &Event) {
                         }
                         Some("volume") => {
                             if let Ok(volume) = f64::from_str(tokens[1]) {
-                                state.volume(volume / 100.0);
+                                state.volume(volume);
                             }
                         }
                         Some("play") => {

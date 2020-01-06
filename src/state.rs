@@ -92,6 +92,8 @@ impl State {
                 let opus_enc = gst::ElementFactory::make("opusenc", Some("opus-encoder")).unwrap();
                 let sink = gst::ElementFactory::make("appsink", Some("app-sink")).unwrap();
 
+                sink.set_property("async", &false);
+
                 volume.set_property("volume", &0.2);
 
                 {
@@ -138,13 +140,13 @@ impl State {
                                 },
                             );
 
-                            tokio::run(
-                                inner_conn
-                                    .get_packet_sink()
-                                    .send(packet)
-                                    .map(|_| ())
-                                    .map_err(|e| (println!("Failed to send voice packet."))),
-                            );
+                            let send_packet = inner_conn
+                                .get_packet_sink()
+                                .send(packet)
+                                .map(|_| ())
+                                .map_err(|e| println!("Failed to send voice packet"));
+
+                            tokio::run(send_packet);
 
                             Ok(gst::FlowSuccess::Ok)
                         })
@@ -167,7 +169,15 @@ impl State {
     }
 
     pub fn add_audio<'a>(&self, uri: String) {
-        let ytdl_args = ["-f", "bestaudio/best", "-g", &uri, "-o", "-"];
+        let ytdl_args = [
+            "--no-playlist",
+            "-f",
+            "bestaudio/best",
+            "-g",
+            &uri,
+            "-o",
+            "-",
+        ];
 
         let ytdl_output = Command::new("youtube-dl")
             .args(&ytdl_args)
@@ -195,6 +205,14 @@ impl State {
         self.pipeline
             .set_state(gst::State::Playing)
             .expect("Can set state to playing");
+
+        tokio::spawn(
+            self.conn
+                .lock()
+                .to_mut()
+                .set_name("PokeBot - Playing")
+                .map_err(|_| println!("Failed to change name")),
+        );
     }
 
     pub async fn poll(&self) {
@@ -224,6 +242,14 @@ impl State {
             };
         }
 
+        tokio::spawn(
+            self.conn
+                .lock()
+                .to_mut()
+                .set_name("PokeBot")
+                .map_err(|_| println!("Failed to change name")),
+        );
+
         self.pipeline
             .set_state(gst::State::Null)
             .expect("Can set state to null");
@@ -231,31 +257,52 @@ impl State {
 
     pub fn volume(&self, volume: f64) {
         self.pipeline
-            .set_state(gst::State::Paused)
-            .expect("Can set state to null");
-        self
-            .pipeline
             .get_by_name("volume")
             .expect("Volume filter should be registered")
-            .set_property("volume", &volume);
+            .set_property("volume", &volume)
+            .expect("can change volume");
     }
 
     pub fn play(&self) {
         self.pipeline
             .set_state(gst::State::Playing)
             .expect("can play");
+
+        tokio::spawn(
+            self.conn
+                .lock()
+                .to_mut()
+                .set_name("PokeBot - Playing")
+                .map_err(|_| println!("Failed to change name")),
+        );
     }
 
     pub fn pause(&self) {
         self.pipeline
             .set_state(gst::State::Paused)
             .expect("can pause");
+
+        tokio::spawn(
+            self.conn
+                .lock()
+                .to_mut()
+                .set_name("PokeBot - Paused")
+                .map_err(|_| println!("Failed to change name")),
+        );
     }
 
     pub fn stop(&self) {
         self.pipeline
             .set_state(gst::State::Ready)
             .expect("can stop");
+
+        tokio::spawn(
+            self.conn
+                .lock()
+                .to_mut()
+                .set_name("PokeBot - Stopped")
+                .map_err(|_| println!("Failed to change name")),
+        );
     }
 
     pub async fn disconnect(&self) {
