@@ -47,9 +47,11 @@ impl Playlist {
         if self.is_empty() {
             None
         } else {
-            self.read += 1;
             self.is_full = false;
-            self.data[self.read].take()
+            let res = self.data[self.read].take();
+            self.read += 1;
+
+            res
         }
     }
 
