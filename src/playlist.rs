@@ -8,7 +8,7 @@ pub struct Playlist {
 impl Playlist {
     pub fn new() -> Self {
         Self {
-            data: Vec::with_capacity(3),
+            data: Vec::with_capacity(50),
             read: 0,
             write: 0,
             is_full: false,
