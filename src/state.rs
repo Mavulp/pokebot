@@ -228,11 +228,19 @@ impl State {
             address: address.to_owned(),
         };
 
-        if gst::State::Null == self.pipeline.get_state(gst::ClockTime(None)).1 {
+        let state = self.pipeline.get_state(gst::ClockTime(None)).1;
+        if gst::State::Null == state {
             self.set_name("PokeBot - Playing");
             self.start_audio(req);
         } else {
-            self.set_name("PokeBot - Playing");
+            match state {
+                gst::State::Playing => self.set_name("PokeBot - Playing"),
+                gst::State::Paused => self.set_name("PokeBot - Paused"),
+                gst::State::Ready => self.set_name("PokeBot - Stopped"),
+                gst::State::Null | gst::State::__Unknown(_) | gst::State::VoidPending => {
+                    unreachable!()
+                }
+            }
 
             let title = req.title.clone();
             if self

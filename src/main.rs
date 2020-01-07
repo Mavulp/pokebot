@@ -12,8 +12,8 @@ use structopt::clap::AppSettings;
 use structopt::StructOpt;
 
 use tsclientlib::{
-    events::Event, ConnectOptions, Connection, ConnectionLock, Event::ConEvents,
-    Identity, MessageTarget,
+    events::Event, ConnectOptions, Connection, ConnectionLock, Event::ConEvents, Identity,
+    MessageTarget,
 };
 
 use log::error;
@@ -122,9 +122,9 @@ async fn async_main() {
     //ctrlc_fut.await.map_err(|(e, _)| e).unwrap();
 
     //conn.disconnect(DisconnectOptions::new())
-        //.compat()
-        //.await
-        //.unwrap();
+    //.compat()
+    //.await
+    //.unwrap();
 
     // TODO Should not be required
     //std::process::exit(0);
