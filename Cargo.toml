@@ -9,17 +9,21 @@ edition = "2018"
 [dependencies]
 tsclientlib = { git = "https://github.com/Jokler/tsclientlib/", branch = "fix-poke" }
 tsproto-packets = { git = "https://github.com/Jokler/tsclientlib/", branch = "fix-poke" }
-structopt = "0.2"
-tokio = "0.1.0"
-tokio2 = { package = "tokio", version = "0.2.0", features = ["tcp", "io-util"] }
-futures-preview = { version = "=0.3.0-alpha.19", features = ["compat"] }
-futures01 = { package = "futures", version = "0.1" }
-tokio-signal = "0.2.7"
 log = "0.4.8"
-gstreamer = "0.15.0"
+toml = "0.5.5"
+structopt = "0.2"
+
+tokio = "0.1"
+tokio-process = "0.2.4"
+tokio-signal = "0.2"
+# Changes enabled features on tsclientlib to fix errors on it
+tokio2 = { package = "tokio", version = "0.2.0", features = ["tcp", "io-util"] }
+
+futures01 = { package = "futures", version = "0.1.21" }
+futures-preview = { version = "=0.3.0-alpha.19", features = ["compat"] }
 futures-util = "0.3.1"
+
+gstreamer = "0.15.0"
 gstreamer-app = "0.15.0"
 gstreamer-audio = "0.15.0"
 byte-slice-cast = "0.3.5"
-serde = "1.0.104"
-toml = "0.5.5"

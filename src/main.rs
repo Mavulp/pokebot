@@ -7,17 +7,18 @@ use futures::{
     future::{FutureExt, TryFutureExt},
 };
 
-use futures01::{future::Future, stream::Stream, sync::mpsc};
+use futures01::future::Future;
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
 
 use tsclientlib::{
-    events::Event, ChannelId, ConnectOptions, Connection, ConnectionLock, DisconnectOptions,
-    Event::ConEvents, Identity, MessageTarget,
+    events::Event, ConnectOptions, Connection, ConnectionLock, Event::ConEvents,
+    Identity, MessageTarget,
 };
 
 use log::error;
 
+mod playlist;
 mod state;
 use state::State;
 
@@ -38,6 +39,12 @@ struct Args {
         parse(from_os_str)
     )]
     id_path: Option<PathBuf>,
+    #[structopt(
+        short = "c",
+        long = "channel",
+        help = "The channel the bot should connect to"
+    )]
+    default_channel: Option<String>,
     #[structopt(
         short = "v",
         long = "verbose",
@@ -70,7 +77,7 @@ async fn async_main() {
         Identity::create().expect("Failed to create id")
     };
 
-    let con_config = ConnectOptions::new(args.address)
+    let mut con_config = ConnectOptions::new(args.address)
         .version(tsclientlib::Version::Linux_3_3_2)
         .name(String::from("PokeBot"))
         .identity(id)
@@ -78,13 +85,17 @@ async fn async_main() {
         .log_packets(args.verbose >= 2)
         .log_udp_packets(args.verbose >= 3);
 
+    if let Some(channel) = args.default_channel {
+        con_config = con_config.channel(channel);
+    }
+
     //let (disconnect_send, disconnect_recv) = mpsc::unbounded();
     let conn = Connection::new(con_config).compat().await.unwrap();
 
-    let mut state = State::new(conn.clone());
+    let state = State::new(conn.clone());
     {
         let packet = conn.lock().server.set_subscribed(true);
-        conn.send_packet(packet).compat().await;
+        conn.send_packet(packet).compat().await.unwrap();
     }
     //con.add_on_disconnect(Box::new( || {
     //disconnect_send.unbounded_send(()).unwrap()
@@ -104,19 +115,19 @@ async fn async_main() {
     loop {
         state.poll().await;
     }
-    let ctrl_c = tokio_signal::ctrl_c().flatten_stream();
+    //let ctrl_c = tokio_signal::ctrl_c().flatten_stream();
 
     //let dc_fut = disconnect_recv.into_future().compat().fuse();
     //let ctrlc_fut = ctrl_c.into_future().compat().fuse();
     //ctrlc_fut.await.map_err(|(e, _)| e).unwrap();
 
-    conn.disconnect(DisconnectOptions::new())
-        .compat()
-        .await
-        .unwrap();
+    //conn.disconnect(DisconnectOptions::new())
+        //.compat()
+        //.await
+        //.unwrap();
 
     // TODO Should not be required
-    std::process::exit(0);
+    //std::process::exit(0);
 }
 
 fn handle_event<'a>(state: &State, conn: &ConnectionLock<'a>, event: &Event) {
@@ -158,7 +169,13 @@ fn handle_event<'a>(state: &State, conn: &ConnectionLock<'a>, event: &Event) {
                                         conn.to_mut().set_name("PokeBot - Loading").map_err(|_| ()),
                                     );
                                     let trimmed = url[5..url.len() - 6].to_owned();
-                                    state.add_audio(trimmed);
+                                    let inner_state = state.clone();
+                                    tokio::spawn(
+                                        async move { inner_state.add_audio(trimmed).await }
+                                            .unit_error()
+                                            .boxed()
+                                            .compat(),
+                                    );
                                 } else {
                                     invalid = true;
                                 }
@@ -175,11 +192,28 @@ fn handle_event<'a>(state: &State, conn: &ConnectionLock<'a>, event: &Event) {
                         }
                         Some("volume") => {
                             if let Ok(volume) = f64::from_str(tokens[1]) {
-                                state.volume(volume / 100.0);
+                                if 0.0 <= volume && volume <= 100.0 {
+                                    state.volume(volume);
+                                } else {
+                                    tokio::spawn(
+                                        conn.to_mut()
+                                            .send_message(
+                                                MessageTarget::Channel,
+                                                "Volume must be between 0 and 100",
+                                            )
+                                            .map_err(|_| ()),
+                                    );
+                                }
                             }
                         }
                         Some("play") => {
                             state.play();
+                        }
+                        Some("skip") => {
+                            state.next();
+                        }
+                        Some("clear") => {
+                            state.clear();
                         }
                         Some("pause") => {
                             state.pause();
