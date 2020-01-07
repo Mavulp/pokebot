@@ -375,6 +375,8 @@ impl State {
             .lock()
             .expect("Mutex was not poisoned")
             .clear();
+
+        self.send_message(MessageTarget::Channel, "Playlist was cleared");
     }
 
     pub fn pause(&self) {
