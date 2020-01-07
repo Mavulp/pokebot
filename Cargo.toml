@@ -10,6 +10,7 @@ edition = "2018"
 tsclientlib = { git = "https://github.com/Jokler/tsclientlib/", branch = "fix-poke" }
 tsproto-packets = { git = "https://github.com/Jokler/tsclientlib/", branch = "fix-poke" }
 log = "0.4.8"
+log4rs = "0.9"
 toml = "0.5.5"
 structopt = "0.2"
 
@@ -21,8 +22,10 @@ tokio2 = { package = "tokio", version = "0.2.0", features = ["tcp", "io-util"] }
 
 futures01 = { package = "futures", version = "0.1.21" }
 futures-preview = { version = "=0.3.0-alpha.19", features = ["compat"] }
+
 futures-util = "0.3.1"
 
+glib = "0.9"
 gstreamer = "0.15.0"
 gstreamer-app = "0.15.0"
 gstreamer-audio = "0.15.0"
