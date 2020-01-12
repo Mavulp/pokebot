@@ -54,7 +54,7 @@ impl Playlist {
         } else {
             self.is_full = false;
             let res = self.data[self.read].take();
-            self.read += 1;
+            self.read = (self.read + 1) % self.data.capacity();
 
             info!("Popping {:?} from playlist", res.as_ref().map(|r| &r.title));
 
