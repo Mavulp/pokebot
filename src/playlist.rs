@@ -1,3 +1,5 @@
+use log::info;
+
 pub struct Playlist {
     data: Vec<Option<AudioRequest>>,
     read: usize,
@@ -20,6 +22,8 @@ impl Playlist {
             return false;
         }
 
+        info!("Adding {} to playlist", &req.title);
+
         if self.data.len() < self.data.capacity() {
             self.data.push(Some(req));
         } else {
@@ -31,6 +35,7 @@ impl Playlist {
         if self.write == self.read {
             self.is_full = true;
         }
+
 
         true
     }
@@ -51,6 +56,8 @@ impl Playlist {
             let res = self.data[self.read].take();
             self.read += 1;
 
+            info!("Popping {:?} from playlist", res.as_ref().map(|r| &r.title));
+
             res
         }
     }
@@ -60,6 +67,8 @@ impl Playlist {
         self.read = 0;
         self.write = 0;
         self.is_full = false;
+
+        info!("Cleared playlist")
     }
 }
 
