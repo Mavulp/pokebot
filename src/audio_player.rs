@@ -149,7 +149,10 @@ impl AudioPlayer {
                 .clone()
                 .dynamic_cast::<AppSink>()
                 .expect("Sink element is expected to be an appsink!");
-            appsink.set_caps(Some(&gst::Caps::new_simple("audio/x-opus", &[])));
+            appsink.set_caps(Some(&gst::Caps::new_simple("audio/x-opus", &[
+                ("channels", &(2i32)),
+                ("rate", &(48_000i32)),
+            ])));
             let callbacks = AppSinkCallbacks::new()
                 .new_sample(move |sink| {
                     let sample = sink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
