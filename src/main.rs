@@ -185,8 +185,12 @@ impl Application {
                     }
                 }
                 Some("play") => {
+                    let playlist = self.playlist.lock().expect("Mutex was not poisoned");
+
                     if !self.player.is_started() {
-                        self.player.stop_current();
+                        if !playlist.is_empty() {
+                            self.player.stop_current();
+                        }
                     } else {
                         self.player.play()?;
                     }
