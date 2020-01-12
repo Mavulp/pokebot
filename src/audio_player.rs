@@ -3,6 +3,7 @@ use std::sync::Once;
 use gstreamer as gst;
 use gst::prelude::*;
 use gstreamer_app::{AppSink, AppSinkCallbacks};
+use gstreamer_audio::{StreamVolume, StreamVolumeFormat};
 use gst::{GhostPad};
 
 use log::{info, debug, warn, error};
@@ -207,10 +208,16 @@ impl AudioPlayer {
     }
 
     pub fn set_volume(&self, volume: f64) -> Result<(), AudioPlayerError> {
-        let log_volume = 1.0 - 10.0f64.powf(-volume * 2.0);
-        info!("Setting volume: {} -> {}", volume, log_volume);
+        let db = 50.0 * volume.log10();
+        info!("Setting volume: {} -> {} dB", volume, db);
 
-        self.volume.set_property("volume", &log_volume)?;
+        let linear = StreamVolume::convert_volume(
+            StreamVolumeFormat::Db,
+            StreamVolumeFormat::Linear,
+            db,
+        );
+
+        self.volume.set_property("volume", &linear)?;
 
         Ok(())
     }

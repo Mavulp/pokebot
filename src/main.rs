@@ -214,7 +214,6 @@ impl Application {
                     if let Some(&volume) = &tokens.get(1) {
                         if let Ok(volume) = f64::from_str(volume) {
                             let volume = volume.max(0.0).min(100.0) * 0.01;
-
                             self.player.set_volume(volume)?;
                         }
                     }
@@ -335,7 +334,7 @@ async fn async_main() {
         (audio_player, Some(connection))
     };
 
-    player.set_volume(0.1).unwrap();
+    player.set_volume(0.5).unwrap();
     let player = Arc::new(player);
     let playlist = Arc::new(Mutex::new(Playlist::new()));
     let application = Arc::new(Application::new(player.clone(), playlist.clone(), connection));
