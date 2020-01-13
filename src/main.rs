@@ -1,37 +1,29 @@
-use std::io::{Read, BufRead};
+use std::io::{BufRead, Read};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::thread;
 use std::sync::{Arc, Mutex};
+use std::thread;
 
-use futures::{
-    future::{FutureExt, TryFutureExt},
-};
+use futures::future::{FutureExt, TryFutureExt};
+use log::{debug, info};
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
-use tsclientlib::{
-    ConnectOptions, Identity, MessageTarget, Invoker, ClientId,
-};
-use log::{info, debug};
+use tsclientlib::{ClientId, ConnectOptions, Identity, Invoker, MessageTarget};
 
 mod audio_player;
-mod youtube_dl;
-mod teamspeak;
 mod playlist;
+mod teamspeak;
+mod youtube_dl;
 
 use audio_player::*;
-use teamspeak::*;
 use playlist::*;
 use std::sync::mpsc::Sender;
+use teamspeak::*;
 
 #[derive(StructOpt, Debug)]
 #[structopt(raw(global_settings = "&[AppSettings::ColoredHelp]"))]
 struct Args {
-    #[structopt(
-        short = "l",
-        long = "local",
-        help = "Run locally in text mode"
-    )]
+    #[structopt(short = "l", long = "local", help = "Run locally in text mode")]
     local: bool,
     #[structopt(
         short = "a",
@@ -93,7 +85,11 @@ struct Application {
 }
 
 impl Application {
-    pub fn new(player: Arc<AudioPlayer>, playlist: Arc<Mutex<Playlist>>, teamspeak: Option<Arc<TeamSpeakConnection>>) -> Self {
+    pub fn new(
+        player: Arc<AudioPlayer>,
+        playlist: Arc<Mutex<Playlist>>,
+        teamspeak: Option<Arc<TeamSpeakConnection>>,
+    ) -> Self {
         Self {
             player,
             teamspeak,
@@ -118,7 +114,12 @@ impl Application {
     }
 
     pub fn add_audio(&self, url: String) {
-        if self.playlist.lock().expect("Mutex was not poisoned").is_full() {
+        if self
+            .playlist
+            .lock()
+            .expect("Mutex was not poisoned")
+            .is_full()
+        {
             info!("Audio playlist is full");
             self.send_message("Playlist is full");
             return;
@@ -212,7 +213,10 @@ impl Application {
                     }
                 }
                 Some("clear") => {
-                    self.playlist.lock().expect("Mutex was not poisoned").clear();
+                    self.playlist
+                        .lock()
+                        .expect("Mutex was not poisoned")
+                        .clear();
                 }
                 Some("volume") => {
                     if let Some(&volume) = &tokens.get(1) {
@@ -299,8 +303,7 @@ async fn async_main() {
     let tx = Arc::new(Mutex::new(tx));
     let (player, connection) = if args.local {
         info!("Starting in CLI mode");
-        let audio_player = AudioPlayer::new(tx.clone(), None)
-            .unwrap();
+        let audio_player = AudioPlayer::new(tx.clone(), None).unwrap();
 
         (audio_player, None)
     } else {
@@ -329,11 +332,19 @@ async fn async_main() {
             con_config = con_config.channel(channel);
         }
 
-        let connection = Arc::new(TeamSpeakConnection::new(tx.clone(), con_config).await.unwrap());
+        let connection = Arc::new(
+            TeamSpeakConnection::new(tx.clone(), con_config)
+                .await
+                .unwrap(),
+        );
         let cconnection = connection.clone();
-        let audio_player = AudioPlayer::new(tx.clone(), Some(Box::new(move |samples| {
-            cconnection.send_audio_packet(samples);
-        }))).unwrap();
+        let audio_player = AudioPlayer::new(
+            tx.clone(),
+            Some(Box::new(move |samples| {
+                cconnection.send_audio_packet(samples);
+            })),
+        )
+        .unwrap();
 
         (audio_player, Some(connection))
     };
@@ -341,7 +352,11 @@ async fn async_main() {
     player.set_volume(0.5).unwrap();
     let player = Arc::new(player);
     let playlist = Arc::new(Mutex::new(Playlist::new()));
-    let application = Arc::new(Application::new(player.clone(), playlist.clone(), connection));
+    let application = Arc::new(Application::new(
+        player.clone(),
+        playlist.clone(),
+        connection,
+    ));
 
     spawn_gstreamer_thread(player, tx.clone());
 
@@ -363,17 +378,15 @@ fn spawn_stdin_reader(tx: Arc<Mutex<Sender<ApplicationMessage>>>) {
         for line in lock.lines() {
             let line = line.unwrap();
 
-            let message = ApplicationMessage::TextMessage(
-                Message {
-                    target: MessageTarget::Server,
-                    invoker: Invoker {
-                        name: String::from("stdin"),
-                        id: ClientId(0),
-                        uid: None,
-                    },
-                    text: line
-                }
-            );
+            let message = ApplicationMessage::TextMessage(Message {
+                target: MessageTarget::Server,
+                invoker: Invoker {
+                    name: String::from("stdin"),
+                    id: ClientId(0),
+                    uid: None,
+                },
+                text: line,
+            });
 
             let tx = tx.lock().unwrap();
             tx.send(message).unwrap();
@@ -382,11 +395,12 @@ fn spawn_stdin_reader(tx: Arc<Mutex<Sender<ApplicationMessage>>>) {
 }
 
 fn spawn_gstreamer_thread(player: Arc<AudioPlayer>, tx: Arc<Mutex<Sender<ApplicationMessage>>>) {
-    thread::spawn(move || {
-        loop {
-            player.poll();
+    thread::spawn(move || loop {
+        player.poll();
 
-            tx.lock().unwrap().send(ApplicationMessage::StateChange(State::EndOfStream)).unwrap();
-        }
+        tx.lock()
+            .unwrap()
+            .send(ApplicationMessage::StateChange(State::EndOfStream))
+            .unwrap();
     });
 }

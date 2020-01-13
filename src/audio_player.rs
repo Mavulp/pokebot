@@ -1,16 +1,16 @@
 use std::sync::Once;
 
-use gstreamer as gst;
 use gst::prelude::*;
+use gst::GhostPad;
+use gstreamer as gst;
 use gstreamer_app::{AppSink, AppSinkCallbacks};
 use gstreamer_audio::{StreamVolume, StreamVolumeFormat};
-use gst::{GhostPad};
 
-use log::{info, debug, warn, error};
-use std::sync::mpsc::Sender;
-use std::sync::{Mutex, Arc};
-use crate::{State, ApplicationMessage};
+use crate::{ApplicationMessage, State};
 use glib::BoolError;
+use log::{debug, error, info, warn};
+use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 
 static GST_INIT: Once = Once::new();
 
@@ -42,10 +42,7 @@ pub struct AudioPlayer {
 }
 
 fn make_element(factoryname: &str, display_name: &str) -> Result<gst::Element, AudioPlayerError> {
-    Ok(gst::ElementFactory::make(
-        factoryname,
-        Some(display_name)
-    )?)
+    Ok(gst::ElementFactory::make(factoryname, Some(display_name))?)
 }
 
 fn link_elements(a: &gst::Element, b: &gst::Element) -> Result<(), AudioPlayerError> {
@@ -89,7 +86,10 @@ fn add_decode_bin_new_pad_callback(
 }
 
 impl AudioPlayer {
-    pub fn new(sender: Arc<Mutex<Sender<ApplicationMessage>>>, callback: Option<Box<dyn FnMut(&[u8]) + Send>>) -> Result<Self, AudioPlayerError> {
+    pub fn new(
+        sender: Arc<Mutex<Sender<ApplicationMessage>>>,
+        callback: Option<Box<dyn FnMut(&[u8]) + Send>>,
+    ) -> Result<Self, AudioPlayerError> {
         GST_INIT.call_once(|| gst::init().unwrap());
 
         info!("Creating audio player");
@@ -104,10 +104,7 @@ impl AudioPlayer {
 
         let (audio_bin, volume, ghost_pad) = Self::create_audio_bin(callback)?;
 
-        add_decode_bin_new_pad_callback(
-            &decode_bin,
-            audio_bin.clone(),
-            ghost_pad);
+        add_decode_bin_new_pad_callback(&decode_bin, audio_bin.clone(), ghost_pad);
 
         pipeline.add(&audio_bin)?;
 
@@ -123,23 +120,18 @@ impl AudioPlayer {
         })
     }
 
-    fn create_audio_bin(callback: Option<Box<dyn FnMut(&[u8]) + Send>>) -> Result<(gst::Bin, gst::Element, gst::GhostPad), AudioPlayerError> {
+    fn create_audio_bin(
+        callback: Option<Box<dyn FnMut(&[u8]) + Send>>,
+    ) -> Result<(gst::Bin, gst::Element, gst::GhostPad), AudioPlayerError> {
         let audio_bin = gst::Bin::new(Some("audio bin"));
         let queue = make_element("queue", "audio queue")?;
         let convert = make_element("audioconvert", "audio converter")?;
         let volume = make_element("volume", "volume")?;
         let resample = make_element("audioresample", "audio resampler")?;
         let pads = queue.get_sink_pads();
-        let queue_sink_pad = pads
-            .first()
-            .unwrap();
+        let queue_sink_pad = pads.first().unwrap();
 
-        audio_bin.add_many(&[
-            &queue,
-            &convert,
-            &volume,
-            &resample,
-        ])?;
+        audio_bin.add_many(&[&queue, &convert, &volume, &resample])?;
 
         if let Some(mut callback) = callback {
             let opus_enc = make_element("opusenc", "opus encoder")?;
@@ -149,10 +141,10 @@ impl AudioPlayer {
                 .clone()
                 .dynamic_cast::<AppSink>()
                 .expect("Sink element is expected to be an appsink!");
-            appsink.set_caps(Some(&gst::Caps::new_simple("audio/x-opus", &[
-                ("channels", &(2i32)),
-                ("rate", &(48_000i32)),
-            ])));
+            appsink.set_caps(Some(&gst::Caps::new_simple(
+                "audio/x-opus",
+                &[("channels", &(2i32)), ("rate", &(48_000i32))],
+            )));
             let callbacks = AppSinkCallbacks::new()
                 .new_sample(move |sink| {
                     let sample = sink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
@@ -167,33 +159,15 @@ impl AudioPlayer {
                 .build();
             appsink.set_callbacks(callbacks);
 
-            audio_bin.add_many(&[
-                &opus_enc,
-                &sink
-            ])?;
+            audio_bin.add_many(&[&opus_enc, &sink])?;
 
-            gst::Element::link_many(&[
-                &queue,
-                &convert,
-                &volume,
-                &resample,
-                &opus_enc,
-                &sink
-            ])?;
+            gst::Element::link_many(&[&queue, &convert, &volume, &resample, &opus_enc, &sink])?;
         } else {
             let sink = make_element("autoaudiosink", "auto audio sink")?;
 
-            audio_bin.add_many(&[
-                &sink
-            ])?;
+            audio_bin.add_many(&[&sink])?;
 
-            gst::Element::link_many(&[
-                &queue,
-                &convert,
-                &volume,
-                &resample,
-                &sink
-            ])?;
+            gst::Element::link_many(&[&queue, &convert, &volume, &resample, &sink])?;
         };
 
         let ghost_pad = GhostPad::new(Some("audio bin sink"), queue_sink_pad).unwrap();
@@ -214,11 +188,8 @@ impl AudioPlayer {
         let db = 50.0 * volume.log10();
         info!("Setting volume: {} -> {} dB", volume, db);
 
-        let linear = StreamVolume::convert_volume(
-            StreamVolumeFormat::Db,
-            StreamVolumeFormat::Linear,
-            db,
-        );
+        let linear =
+            StreamVolume::convert_volume(StreamVolumeFormat::Db, StreamVolumeFormat::Linear, db);
 
         self.volume.set_property("volume", &linear)?;
 
@@ -232,7 +203,7 @@ impl AudioPlayer {
             (gst::State::Null, gst::State::VoidPending) => false,
             (_, gst::State::Null) => false,
             (gst::State::Ready, gst::State::VoidPending) => false,
-            _ => true
+            _ => true,
         }
     }
 
@@ -263,7 +234,7 @@ impl AudioPlayer {
     pub fn stop_current(&self) {
         info!("Stopping pipeline, sending EOS");
 
-        let handled =  self.http_src.send_event(gst::Event::new_eos().build());
+        let handled = self.http_src.send_event(gst::Event::new_eos().build());
         if !handled {
             warn!("EOS event was not handled");
         }
@@ -294,12 +265,23 @@ impl AudioPlayer {
                         let pending = state.get_pending();
 
                         match (old, current, pending) {
-                            (gst::State::Paused, gst::State::Playing, gst::State::VoidPending) => self.send_state(State::Playing),
-                            (gst::State::Playing, gst::State::Paused, gst::State::VoidPending) => self.send_state(State::Paused),
-                            (_, gst::State::Ready, gst::State::Null) => self.send_state(State::Stopped),
-                            (_, gst::State::Null, gst::State::VoidPending) => self.send_state(State::Stopped),
+                            (gst::State::Paused, gst::State::Playing, gst::State::VoidPending) => {
+                                self.send_state(State::Playing)
+                            }
+                            (gst::State::Playing, gst::State::Paused, gst::State::VoidPending) => {
+                                self.send_state(State::Paused)
+                            }
+                            (_, gst::State::Ready, gst::State::Null) => {
+                                self.send_state(State::Stopped)
+                            }
+                            (_, gst::State::Null, gst::State::VoidPending) => {
+                                self.send_state(State::Stopped)
+                            }
                             _ => {
-                                debug!("Pipeline transitioned from {:?} to {:?}, with {:?} pending", old, current, pending);
+                                debug!(
+                                    "Pipeline transitioned from {:?} to {:?}, with {:?} pending",
+                                    old, current, pending
+                                );
                             }
                         }
                     }
@@ -308,7 +290,7 @@ impl AudioPlayer {
                         self.reset().unwrap();
 
                         break 'outer;
-                    },
+                    }
                     MessageView::Warning(warn) => {
                         warn!(
                             "Warning from {:?}: {} ({:?})",
@@ -329,7 +311,7 @@ impl AudioPlayer {
                     }
                     _ => {
                         // debug!("{:?}", msg)
-                    },
+                    }
                 };
             }
         }

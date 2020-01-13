@@ -1,6 +1,6 @@
 use std::process::{Command, Stdio};
 
-use log::{debug};
+use log::debug;
 
 pub fn get_audio_download_url(uri: String) -> Result<(String, String), String> {
     let ytdl_args = [
@@ -20,9 +20,7 @@ pub fn get_audio_download_url(uri: String) -> Result<(String, String), String> {
 
     debug!("yt-dl command: {:?}", cmd);
 
-    let ytdl_output = cmd
-        .output()
-        .unwrap();
+    let ytdl_output = cmd.output().unwrap();
 
     let output = String::from_utf8(ytdl_output.stdout.clone()).unwrap();
 

@@ -36,7 +36,6 @@ impl Playlist {
             self.is_full = true;
         }
 
-
         true
     }
 
