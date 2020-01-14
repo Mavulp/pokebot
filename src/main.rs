@@ -19,6 +19,7 @@ mod youtube_dl;
 use audio_player::*;
 use playlist::*;
 use teamspeak::*;
+use youtube_dl::AudioMetadata;
 
 #[derive(StructOpt, Debug)]
 #[structopt(raw(global_settings = "&[AppSettings::ColoredHelp]"))]
@@ -107,33 +108,37 @@ impl Application {
         }
     }
 
-    fn start_playing_audio(&self, request: AudioRequest) {
-        self.send_message(&format!("Playing '{}'", request.title));
-        self.set_description(&format!("Currently playing '{}'", request.title));
+    fn start_playing_audio(&self, meta_data: AudioMetadata) {
+        if let Some(title) = meta_data.title {
+            self.send_message(&format!("Playing '{}'", title));
+            self.set_description(&format!("Currently playing '{}'", title));
+        } else {
+            self.send_message("Playing unknown title");
+            self.set_description("Currently playing");
+        }
         self.player.reset().unwrap();
-        self.player.set_source_url(request.address).unwrap();
+        self.player.set_source_url(meta_data.url).unwrap();
         self.player.play().unwrap();
     }
 
     pub async fn add_audio(&self, url: String) {
         match youtube_dl::get_audio_download_url(url).await {
-            Ok((audio_url, audio_title)) => {
-                info!("Found audio url: {}", audio_url);
-
-                let request = AudioRequest {
-                    title: audio_title,
-                    address: audio_url,
-                };
+            Ok(meta_data) => {
+                info!("Found audio url: {}", meta_data.url);
 
                 let mut playlist = self.playlist.lock().expect("Mutex was not poisoned");
-                playlist.push(request.clone());
+                playlist.push(meta_data.clone());
 
                 if !self.player.is_started() {
                     if let Some(request) = playlist.pop() {
                         self.start_playing_audio(request);
                     }
                 } else {
-                    self.send_message(&format!("Added '{}' to playlist", request.title));
+                    if let Some(title) = meta_data.title {
+                        self.send_message(&format!("Added '{}' to playlist", title));
+                    } else {
+                        self.send_message("Added to playlist");
+                    }
                 }
             }
             Err(e) => {

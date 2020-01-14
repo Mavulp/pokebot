@@ -1829,6 +1829,8 @@ dependencies = [
  "gstreamer-audio",
  "log",
  "log4rs",
+ "serde",
+ "serde_json",
  "structopt",
  "tokio 0.1.22",
  "tokio 0.2.7",
