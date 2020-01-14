@@ -1,8 +1,10 @@
 use std::process::{Command, Stdio};
+use tokio_process::CommandExt;
+use futures::compat::Future01CompatExt;
 
 use log::debug;
 
-pub fn get_audio_download_url(uri: String) -> Result<(String, String), String> {
+pub async fn get_audio_download_url(uri: String) -> Result<(String, String), String> {
     let ytdl_args = [
         "--no-playlist",
         "-f",
@@ -20,7 +22,7 @@ pub fn get_audio_download_url(uri: String) -> Result<(String, String), String> {
 
     debug!("yt-dl command: {:?}", cmd);
 
-    let ytdl_output = cmd.output().unwrap();
+    let ytdl_output = cmd.output_async().compat().await.unwrap();
 
     let output = String::from_utf8(ytdl_output.stdout.clone()).unwrap();
 
