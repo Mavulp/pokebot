@@ -8,6 +8,7 @@ use futures::future::{FutureExt, TryFutureExt};
 use log::{debug, info};
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
+use tokio02::sync::mpsc::UnboundedSender;
 use tsclientlib::{ClientId, ConnectOptions, Identity, Invoker, MessageTarget};
 
 mod audio_player;
@@ -17,7 +18,6 @@ mod youtube_dl;
 
 use audio_player::*;
 use playlist::*;
-use std::sync::mpsc::Sender;
 use teamspeak::*;
 
 #[derive(StructOpt, Debug)]
@@ -58,6 +58,7 @@ struct Args {
     // 3. Print udp packets
 }
 
+#[derive(Debug)]
 pub struct Message {
     pub target: MessageTarget,
     pub invoker: Invoker,
@@ -72,6 +73,7 @@ pub enum State {
     EndOfStream,
 }
 
+#[derive(Debug)]
 pub enum ApplicationMessage {
     TextMessage(Message),
     StateChange(State),
@@ -299,7 +301,7 @@ async fn async_main() {
 
     debug!("Received CLI arguments: {:?}", std::env::args());
 
-    let (tx, rx) = ::std::sync::mpsc::channel();
+    let (tx, mut rx) = tokio02::sync::mpsc::unbounded_channel();
     let tx = Arc::new(Mutex::new(tx));
     let (player, connection) = if args.local {
         info!("Starting in CLI mode");
@@ -365,13 +367,13 @@ async fn async_main() {
     }
 
     loop {
-        while let Ok(msg) = rx.recv() {
+        while let Some(msg) = rx.recv().await {
             application.on_message(msg).unwrap();
         }
     }
 }
 
-fn spawn_stdin_reader(tx: Arc<Mutex<Sender<ApplicationMessage>>>) {
+fn spawn_stdin_reader(tx: Arc<Mutex<UnboundedSender<ApplicationMessage>>>) {
     thread::spawn(move || {
         let stdin = ::std::io::stdin();
         let lock = stdin.lock();
@@ -394,7 +396,10 @@ fn spawn_stdin_reader(tx: Arc<Mutex<Sender<ApplicationMessage>>>) {
     });
 }
 
-fn spawn_gstreamer_thread(player: Arc<AudioPlayer>, tx: Arc<Mutex<Sender<ApplicationMessage>>>) {
+fn spawn_gstreamer_thread(
+    player: Arc<AudioPlayer>,
+    tx: Arc<Mutex<UnboundedSender<ApplicationMessage>>>,
+) {
     thread::spawn(move || loop {
         player.poll();
 

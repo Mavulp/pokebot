@@ -9,8 +9,8 @@ use gstreamer_audio::{StreamVolume, StreamVolumeFormat};
 use crate::{ApplicationMessage, State};
 use glib::BoolError;
 use log::{debug, error, info, warn};
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
+use tokio02::sync::mpsc::UnboundedSender;
 
 static GST_INIT: Once = Once::new();
 
@@ -38,7 +38,7 @@ pub struct AudioPlayer {
     http_src: gst::Element,
 
     volume: gst::Element,
-    sender: Arc<Mutex<Sender<ApplicationMessage>>>,
+    sender: Arc<Mutex<UnboundedSender<ApplicationMessage>>>,
 }
 
 fn make_element(factoryname: &str, display_name: &str) -> Result<gst::Element, AudioPlayerError> {
@@ -87,7 +87,7 @@ fn add_decode_bin_new_pad_callback(
 
 impl AudioPlayer {
     pub fn new(
-        sender: Arc<Mutex<Sender<ApplicationMessage>>>,
+        sender: Arc<Mutex<UnboundedSender<ApplicationMessage>>>,
         callback: Option<Box<dyn FnMut(&[u8]) + Send>>,
     ) -> Result<Self, AudioPlayerError> {
         GST_INIT.call_once(|| gst::init().unwrap());

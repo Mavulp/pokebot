@@ -1,8 +1,8 @@
 use futures::compat::Future01CompatExt;
 use futures01::{future::Future, sink::Sink};
+use tokio02::sync::mpsc::UnboundedSender;
 
 use crate::{ApplicationMessage, Message};
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use tsclientlib::Event::ConEvents;
 use tsclientlib::{events::Event, ClientId, ConnectOptions, Connection, MessageTarget};
@@ -30,7 +30,7 @@ fn get_message<'a>(event: &Event) -> Option<Message> {
 
 impl TeamSpeakConnection {
     pub async fn new(
-        tx: Arc<Mutex<Sender<ApplicationMessage>>>,
+        tx: Arc<Mutex<UnboundedSender<ApplicationMessage>>>,
         options: ConnectOptions,
     ) -> Result<TeamSpeakConnection, tsclientlib::Error> {
         let conn = Connection::new(options).compat().await?;

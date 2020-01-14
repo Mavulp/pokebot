@@ -18,7 +18,7 @@ tokio = "0.1"
 tokio-process = "0.2.4"
 tokio-signal = "0.2"
 # Changes enabled features on tsclientlib to fix errors on it
-tokio2 = { package = "tokio", version = "0.2.0", features = ["tcp", "io-util"] }
+tokio02 = { package = "tokio", version = "0.2.0", features = ["tcp", "io-util", "sync"] }
 
 futures01 = { package = "futures", version = "0.1.21" }
 futures-preview = { version = "=0.3.0-alpha.19", features = ["compat"] }

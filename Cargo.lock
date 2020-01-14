@@ -2697,6 +2697,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e61fe9bd8b36108a3c679bb6de916e39595a7a7f18c5e314c0014bb1b6ba13f7"
 dependencies = [
  "bytes 0.5.3",
+ "fnv",
  "iovec",
  "lazy_static",
  "memchr",
