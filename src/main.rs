@@ -115,8 +115,8 @@ impl Application {
         self.player.play().unwrap();
     }
 
-    pub fn add_audio(&self, url: String) {
-        match youtube_dl::get_audio_download_url(url) {
+    pub async fn add_audio(&self, url: String) {
+        match youtube_dl::get_audio_download_url(url).await {
             Ok((audio_url, audio_title)) => {
                 info!("Found audio url: {}", audio_url);
 
@@ -162,7 +162,7 @@ impl Application {
         self.with_teamspeak(|ts| ts.set_description(desc));
     }
 
-    fn on_text(&self, message: Message) -> Result<(), AudioPlayerError> {
+    async fn on_text(&self, message: Message) -> Result<(), AudioPlayerError> {
         let msg = message.text;
         if msg.starts_with("!") {
             let tokens = msg[1..].split_whitespace().collect::<Vec<_>>();
@@ -173,7 +173,7 @@ impl Application {
                         // strip bbcode tags from url
                         let url = url.replace("[URL]", "").replace("[/URL]", "");
 
-                        self.add_audio(url.to_string());
+                        self.add_audio(url.to_string()).await;
                     }
                 }
                 Some("play") => {
@@ -257,14 +257,14 @@ impl Application {
         Ok(())
     }
 
-    pub fn on_message(&self, message: ApplicationMessage) -> Result<(), AudioPlayerError> {
+    pub async fn on_message(&self, message: ApplicationMessage) -> Result<(), AudioPlayerError> {
         match message {
             ApplicationMessage::TextMessage(message) => {
                 if let MessageTarget::Poke(who) = message.target {
                     info!("Poked by {}, joining their channel", who);
                     self.with_teamspeak(|ts| ts.join_channel_of_user(who));
                 } else {
-                    self.on_text(message)?;
+                    self.on_text(message).await?;
                 }
             }
             ApplicationMessage::StateChange(state) => {
@@ -357,7 +357,7 @@ async fn async_main() {
 
     loop {
         while let Some(msg) = rx.recv().await {
-            application.on_message(msg).unwrap();
+            application.on_message(msg).await.unwrap();
         }
     }
 }
