@@ -108,8 +108,8 @@ impl Application {
         }
     }
 
-    fn start_playing_audio(&self, meta_data: AudioMetadata) {
-        if let Some(title) = meta_data.title {
+    fn start_playing_audio(&self, metadata: AudioMetadata) {
+        if let Some(title) = metadata.title {
             self.send_message(&format!("Playing '{}'", title));
             self.set_description(&format!("Currently playing '{}'", title));
         } else {
@@ -117,24 +117,24 @@ impl Application {
             self.set_description("Currently playing");
         }
         self.player.reset().unwrap();
-        self.player.set_source_url(meta_data.url).unwrap();
+        self.player.set_source_url(metadata.url).unwrap();
         self.player.play().unwrap();
     }
 
     pub async fn add_audio(&self, url: String) {
         match youtube_dl::get_audio_download_url(url).await {
-            Ok(meta_data) => {
-                info!("Found audio url: {}", meta_data.url);
+            Ok(metadata) => {
+                info!("Found audio url: {}", metadata.url);
 
                 let mut playlist = self.playlist.lock().expect("Mutex was not poisoned");
-                playlist.push(meta_data.clone());
+                playlist.push(metadata.clone());
 
                 if !self.player.is_started() {
                     if let Some(request) = playlist.pop() {
                         self.start_playing_audio(request);
                     }
                 } else {
-                    if let Some(title) = meta_data.title {
+                    if let Some(title) = metadata.title {
                         self.send_message(&format!("Added '{}' to playlist", title));
                     } else {
                         self.send_message("Added to playlist");
