@@ -2,8 +2,10 @@ use std::collections::VecDeque;
 
 use log::info;
 
+use crate::youtube_dl::AudioMetadata;
+
 pub struct Playlist {
-    data: VecDeque<AudioRequest>,
+    data: VecDeque<AudioMetadata>,
 }
 
 impl Playlist {
@@ -13,13 +15,13 @@ impl Playlist {
         }
     }
 
-    pub fn push(&mut self, req: AudioRequest) {
-        info!("Adding {} to playlist", &req.title);
+    pub fn push(&mut self, data: AudioMetadata) {
+        info!("Adding {:?} to playlist", &data.title);
 
-        self.data.push_front(req)
+        self.data.push_front(data)
     }
 
-    pub fn pop(&mut self) -> Option<AudioRequest> {
+    pub fn pop(&mut self) -> Option<AudioMetadata> {
         let res = self.data.pop_back();
         info!("Popping {:?} from playlist", res.as_ref().map(|r| &r.title));
 
@@ -35,10 +37,4 @@ impl Playlist {
 
         info!("Cleared playlist")
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct AudioRequest {
-    pub title: String,
-    pub address: String,
 }
