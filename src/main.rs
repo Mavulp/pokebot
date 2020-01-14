@@ -116,17 +116,6 @@ impl Application {
     }
 
     pub fn add_audio(&self, url: String) {
-        if self
-            .playlist
-            .lock()
-            .expect("Mutex was not poisoned")
-            .is_full()
-        {
-            info!("Audio playlist is full");
-            self.send_message("Playlist is full");
-            return;
-        }
-
         match youtube_dl::get_audio_download_url(url) {
             Ok((audio_url, audio_title)) => {
                 info!("Found audio url: {}", audio_url);
