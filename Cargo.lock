@@ -191,18 +191,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "built"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d2315cfb416f86e05360edc950b1d7d25ecfb00f7f8eba60dbd7882a0f2e944"
-dependencies = [
- "chrono",
- "git2",
- "semver",
- "toml",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -251,10 +239,6 @@ name = "cc"
 version = "1.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e450b8da92aa6f274e7c6437692f9f2ce6d701fb73bacfcf87897b3f89a4c20e"
-dependencies = [
- "jobserver",
- "num_cpus",
-]
 
 [[package]]
 name = "cfg-if"
@@ -890,16 +874,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "git2"
-version = "0.10.2"
+name = "git-testament"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c1af51ea8a906616af45a4ce78eacf25860f7a13ae7bf8a814693f0f4037a26"
+checksum = "3ef4008ae8759f8f634e9b4db201b2205cbc9992fc36fdacb54a9a7dbd045207"
 dependencies = [
- "bitflags",
- "libc",
- "libgit2-sys",
+ "git-testament-derive",
+]
+
+[[package]]
+name = "git-testament-derive"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4262cd02031d4ce8dad7069232c2cfce38ff9f8557647ea96d130a99f2aa543"
+dependencies = [
+ "chrono",
  "log",
- "url 2.1.0",
+ "quote 1.0.2",
+ "syn 1.0.13",
 ]
 
 [[package]]
@@ -1260,17 +1252,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "501266b7edd0174f8530248f87f99c88fbe60ca4ef3dd486835b8d8d53136f7f"
 
 [[package]]
-name = "jobserver"
-version = "0.1.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2b1d42ef453b30b7387e113da1c83ab1605d90c5b4e0eb8e96d016ed3b8c160"
-dependencies = [
- "getrandom",
- "libc",
- "log",
-]
-
-[[package]]
 name = "js-sys"
 version = "0.3.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1300,30 +1281,6 @@ name = "libc"
 version = "0.2.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d515b1f41455adea1313a4a2ac8a8a477634fbae63cc6100e3aebb207ce61558"
-
-[[package]]
-name = "libgit2-sys"
-version = "0.9.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4870c781f6063efb83150cd22c1ddf6ecf58531419e7570cdcced46970f64a16"
-dependencies = [
- "cc",
- "libc",
- "libz-sys",
- "pkg-config",
-]
-
-[[package]]
-name = "libz-sys"
-version = "1.0.25"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2eb5e43362e38e2bca2fd5f5134c4d4564a23a5c28e9b95411652021a8675ebe"
-dependencies = [
- "cc",
- "libc",
- "pkg-config",
- "vcpkg",
-]
 
 [[package]]
 name = "linked-hash-map"
@@ -2990,7 +2947,7 @@ dependencies = [
 [[package]]
 name = "ts-bookkeeping"
 version = "0.1.0"
-source = "git+https://github.com/Jokler/tsclientlib/?branch=fix-poke#a2e2d5b7a81a5f8b1af43473fccb3ffd3c85ee8b"
+source = "git+https://github.com/ReSpeak/tsclientlib#7d82374088c11d3d3171ed07bfef16f4d9482b26"
 dependencies = [
  "base64",
  "chrono",
@@ -3009,10 +2966,9 @@ dependencies = [
 [[package]]
 name = "tsclientlib"
 version = "0.1.0"
-source = "git+https://github.com/Jokler/tsclientlib/?branch=fix-poke#a2e2d5b7a81a5f8b1af43473fccb3ffd3c85ee8b"
+source = "git+https://github.com/ReSpeak/tsclientlib#7d82374088c11d3d3171ed07bfef16f4d9482b26"
 dependencies = [
  "base64",
- "built",
  "bytes 0.4.12",
  "chashmap",
  "chrono",
@@ -3020,6 +2976,7 @@ dependencies = [
  "failure",
  "futures 0.1.29",
  "futures 0.3.1",
+ "git-testament",
  "heck",
  "itertools",
  "num-traits",
@@ -3045,13 +3002,12 @@ dependencies = [
 [[package]]
 name = "tsproto"
 version = "0.1.0"
-source = "git+https://github.com/Jokler/tsclientlib/?branch=fix-poke#a2e2d5b7a81a5f8b1af43473fccb3ffd3c85ee8b"
+source = "git+https://github.com/ReSpeak/tsclientlib#7d82374088c11d3d3171ed07bfef16f4d9482b26"
 dependencies = [
  "aes",
  "arrayref",
  "base64",
  "bitflags",
- "built",
  "byteorder",
  "bytes 0.4.12",
  "chrono",
@@ -3061,6 +3017,7 @@ dependencies = [
  "failure",
  "flakebi-ring",
  "futures 0.1.29",
+ "git-testament",
  "num-bigint",
  "num-derive",
  "num-traits",
@@ -3083,7 +3040,7 @@ dependencies = [
 [[package]]
 name = "tsproto-packets"
 version = "0.1.0"
-source = "git+https://github.com/Jokler/tsclientlib/?branch=fix-poke#a2e2d5b7a81a5f8b1af43473fccb3ffd3c85ee8b"
+source = "git+https://github.com/ReSpeak/tsclientlib#7d82374088c11d3d3171ed07bfef16f4d9482b26"
 dependencies = [
  "arrayref",
  "base64",
@@ -3103,7 +3060,7 @@ dependencies = [
 [[package]]
 name = "tsproto-structs"
 version = "0.1.0"
-source = "git+https://github.com/Jokler/tsclientlib/?branch=fix-poke#a2e2d5b7a81a5f8b1af43473fccb3ffd3c85ee8b"
+source = "git+https://github.com/ReSpeak/tsclientlib#7d82374088c11d3d3171ed07bfef16f4d9482b26"
 dependencies = [
  "base64",
  "csv",
@@ -3118,8 +3075,9 @@ dependencies = [
 [[package]]
 name = "tsproto-types"
 version = "0.1.0"
-source = "git+https://github.com/Jokler/tsclientlib/?branch=fix-poke#a2e2d5b7a81a5f8b1af43473fccb3ffd3c85ee8b"
+source = "git+https://github.com/ReSpeak/tsclientlib#7d82374088c11d3d3171ed07bfef16f4d9482b26"
 dependencies = [
+ "base64",
  "bitflags",
  "chrono",
  "heck",

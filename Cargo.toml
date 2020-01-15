@@ -7,8 +7,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tsclientlib = { git = "https://github.com/Jokler/tsclientlib/", branch = "fix-poke" }
-tsproto-packets = { git = "https://github.com/Jokler/tsclientlib/", branch = "fix-poke" }
+tsclientlib = { git = "https://github.com/ReSpeak/tsclientlib" }
+tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib" }
 log = "0.4.8"
 log4rs = "0.9"
 toml = "0.5.5"
