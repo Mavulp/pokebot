@@ -1,6 +1,5 @@
 use std::io::{BufRead, Read};
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -12,6 +11,7 @@ use tokio02::sync::mpsc::UnboundedSender;
 use tsclientlib::{ClientId, ConnectOptions, Identity, Invoker, MessageTarget};
 
 mod audio_player;
+mod command;
 mod playlist;
 mod teamspeak;
 mod youtube_dl;
@@ -20,6 +20,7 @@ use audio_player::*;
 use playlist::*;
 use teamspeak::*;
 use youtube_dl::AudioMetadata;
+use command::Command;
 
 #[derive(StructOpt, Debug)]
 #[structopt(raw(global_settings = "&[AppSettings::ColoredHelp]"))]
@@ -169,60 +170,63 @@ impl Application {
 
     async fn on_text(&self, message: Message) -> Result<(), AudioPlayerError> {
         let msg = message.text;
-        if msg.starts_with("!") {
-            let tokens = msg[1..].split_whitespace().collect::<Vec<_>>();
+        if msg.starts_with("poke") {
+            let tokens = msg.split_whitespace().collect::<Vec<_>>();
 
-            match tokens.get(0).map(|t| *t) {
-                Some("add") => {
-                    if let Some(url) = &tokens.get(1) {
-                        // strip bbcode tags from url
-                        let url = url.replace("[URL]", "").replace("[/URL]", "");
+            let args = Command::from_iter_safe(&tokens);
+            match args {
+                Ok(v) => self.on_command(v).await?,
+                Err(e) => self.send_message(&format!("\n{}", e.message)),
+            };
+        }
 
-                        self.add_audio(url.to_string()).await;
+        Ok(())
+    }
+
+    async fn on_command(&self, command: Command) -> Result<(), AudioPlayerError> {
+        match command {
+            Command::Play => {
+                let playlist = self.playlist.lock().expect("Mutex was not poisoned");
+
+                if !self.player.is_started() {
+                    if !playlist.is_empty() {
+                        self.player.stop_current();
                     }
+                } else {
+                    self.player.play()?;
                 }
-                Some("play") => {
-                    let playlist = self.playlist.lock().expect("Mutex was not poisoned");
+            }
+            Command::Add { url } => {
+                // strip bbcode tags from url
+                let url = url.replace("[URL]", "").replace("[/URL]", "");
 
-                    if !self.player.is_started() {
-                        if !playlist.is_empty() {
-                            self.player.stop_current();
-                        }
-                    } else {
-                        self.player.play()?;
-                    }
-                }
-                Some("pause") => {
-                    self.player.pause()?;
-                }
-                Some("stop") => {
+                self.add_audio(url.to_string()).await;
+            }
+            Command::Pause => {
+                self.player.pause()?;
+            }
+            Command::Stop => {
+                self.player.reset()?;
+            }
+            Command::Next => {
+                let playlist = self.playlist.lock().expect("Mutex was not poisoned");
+                if !playlist.is_empty() {
+                    info!("Skipping to next track");
+                    self.player.stop_current();
+                } else {
+                    info!("Playlist empty, cannot skip");
                     self.player.reset()?;
                 }
-                Some("next") => {
-                    let playlist = self.playlist.lock().expect("Mutex was not poisoned");
-                    if !playlist.is_empty() {
-                        info!("Skipping to next track");
-                        self.player.stop_current();
-                    } else {
-                        info!("Playlist empty, cannot skip");
-                        self.player.reset()?;
-                    }
+            }
+            Command::Clear => {
+                self.playlist
+                    .lock()
+                    .expect("Mutex was not poisoned")
+                    .clear();
                 }
-                Some("clear") => {
-                    self.playlist
-                        .lock()
-                        .expect("Mutex was not poisoned")
-                        .clear();
-                }
-                Some("volume") => {
-                    if let Some(&volume) = &tokens.get(1) {
-                        if let Ok(volume) = f64::from_str(volume) {
-                            let volume = volume.max(0.0).min(100.0) * 0.01;
-                            self.player.set_volume(volume)?;
-                        }
-                    }
-                }
-                _ => {}
+            Command::Volume { percent: volume } => {
+                let volume = volume.max(0.0).min(100.0) * 0.01;
+                self.player.set_volume(volume)?;
             }
         }
 
