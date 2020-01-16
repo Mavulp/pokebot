@@ -4,8 +4,12 @@ use structopt::StructOpt;
 #[derive(StructOpt, Debug)]
 #[structopt(
     rename_all = "kebab-case",
-    template = "Try one of these commands:\n{subcommands}",
-    raw(global_settings = "&[VersionlessSubcommands, ColorNever]",)
+    template = "{subcommands}",
+    raw(global_settings = "&[VersionlessSubcommands,
+                            DisableHelpFlags,
+                            DisableVersion,
+                            ColorNever,
+                            NoBinaryName]",)
 )]
 pub enum Command {
     /// Adds url to playlist
@@ -17,6 +21,7 @@ pub enum Command {
     /// Stops audio playback
     Stop,
     /// Switches to the next queue entry
+    #[structopt(alias = "skip")]
     Next,
     /// Clears the playback queue
     Clear,

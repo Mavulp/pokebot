@@ -170,14 +170,16 @@ impl Application {
 
     async fn on_text(&self, message: Message) -> Result<(), AudioPlayerError> {
         let msg = message.text;
-        if msg.starts_with("poke") {
-            let tokens = msg.split_whitespace().collect::<Vec<_>>();
+        if msg.starts_with("!") {
+            let tokens = msg[1..].split_whitespace().collect::<Vec<_>>();
 
-            let args = Command::from_iter_safe(&tokens);
-            match args {
-                Ok(v) => self.on_command(v).await?,
-                Err(e) => self.send_message(&format!("\n{}", e.message)),
-            };
+            match Command::from_iter_safe(&tokens) {
+                Ok(args) => self.on_command(args).await?,
+                Err(e) if e.kind == structopt::clap::ErrorKind::HelpDisplayed => {
+                    self.send_message(&format!("\n{}", e.message));
+                }
+                _ => (),
+            }
         }
 
         Ok(())
