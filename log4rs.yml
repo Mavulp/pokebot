@@ -2,8 +2,9 @@
 refresh_rate: 30 seconds
 
 appenders:
-  stdout:
+  stderr:
     kind: console
+    target: stderr
     encoder:
       pattern: "{d(%H:%M:%S%.3f)} {h({level})} {T}[{I}] {f}:{L} - {m}{n}"
 
@@ -16,7 +17,7 @@ appenders:
 root:
   level: debug
   appenders:
-    - stdout
+    - stderr
     - file
 
 loggers:
