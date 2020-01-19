@@ -8,7 +8,7 @@ jobs:
     steps:
     - name: Clone pokebot
       uses: actions/checkout@v1
-    - name: Install gstreamer dep
+    - name: Install gstreamer dependency
       uses: mstksg/get-package@v1
       with:
           apt-get: libgstreamer1.0-dev
