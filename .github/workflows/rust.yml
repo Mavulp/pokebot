@@ -7,6 +7,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
+    - uses: mstksg/get-package@v1
+      with:
+          apt-get: gstreamer
     - name: Build
       run: cargo build --verbose
     - name: Run tests
