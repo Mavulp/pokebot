@@ -6,7 +6,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
+    - name: Clone pokebot
+      uses: actions/checkout@v1
+    - name: Update repositories
+      run: sudo apt-get update
+    - name: Install gstreamer dependency
+      run: sudo apt-get libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
