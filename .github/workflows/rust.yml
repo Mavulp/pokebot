@@ -8,6 +8,7 @@ jobs:
     steps:
     - name: Clone pokebot
       uses: actions/checkout@v1
+    - run: sudo apt-get update
     - name: Install gstreamer dependency
       uses: mstksg/get-package@v1
       with:
