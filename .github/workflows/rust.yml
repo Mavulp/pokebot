@@ -8,10 +8,10 @@ jobs:
     steps:
     - name: Clone pokebot
       uses: actions/checkout@v1
-    - name: Download test dependencies
-      uses: teddyking/dependency-action@master
+    - name: Install gstreamer dep
+      uses: mstksg/get-package@v1
       with:
-          tgzDeps: https://www.archlinux.org/packages/extra/x86_64/gstreamer/download/
+          apt-get: libgstreamer1.0-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
