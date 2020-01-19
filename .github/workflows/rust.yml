@@ -6,10 +6,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
-    - uses: mstksg/get-package@v1
+    - name: Clone pokebot
+      uses: actions/checkout@v1
+    - name: Download test dependencies
+      uses: teddyking/dependency-action@master
       with:
-          apt-get: libgstreamer1.0-0
+          tgzDeps: https://www.archlinux.org/packages/extra/x86_64/gstreamer/download/
     - name: Build
       run: cargo build --verbose
     - name: Run tests
