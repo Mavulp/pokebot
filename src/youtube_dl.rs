@@ -1,8 +1,8 @@
+use futures::compat::Future01CompatExt;
 use std::process::{Command, Stdio};
 use tokio_process::CommandExt;
-use futures::compat::Future01CompatExt;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use log::debug;
 
@@ -13,13 +13,7 @@ pub struct AudioMetadata {
 }
 
 pub async fn get_audio_download_url(uri: String) -> Result<AudioMetadata, String> {
-    let ytdl_args = [
-        "--no-playlist",
-        "-f",
-        "bestaudio/best",
-        "-j",
-        &uri,
-    ];
+    let ytdl_args = ["--no-playlist", "-f", "bestaudio/best", "-j", &uri];
 
     let mut cmd = Command::new("youtube-dl");
     cmd.args(&ytdl_args);

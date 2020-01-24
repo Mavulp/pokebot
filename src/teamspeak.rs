@@ -1,13 +1,19 @@
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
 use futures::compat::Future01CompatExt;
 use futures01::{future::Future, sink::Sink};
 use tokio02::sync::mpsc::UnboundedSender;
 
-use crate::{ApplicationMessage, Message};
-use std::sync::{Arc, Mutex};
 use tsclientlib::Event::ConEvents;
-use tsclientlib::{events::Event, ClientId, ConnectOptions, Connection, MessageTarget};
+use tsclientlib::{
+    events::Event, ChannelId, ClientId, ConnectOptions, Connection, DisconnectOptions,
+    MessageTarget, Reason,
+};
 
 use log::error;
+
+use crate::bot::{Message, MusicBotMessage};
 
 pub struct TeamSpeakConnection {
     conn: Connection,
@@ -30,7 +36,7 @@ fn get_message<'a>(event: &Event) -> Option<Message> {
 
 impl TeamSpeakConnection {
     pub async fn new(
-        tx: Arc<Mutex<UnboundedSender<ApplicationMessage>>>,
+        tx: Arc<Mutex<UnboundedSender<MusicBotMessage>>>,
         options: ConnectOptions,
     ) -> Result<TeamSpeakConnection, tsclientlib::Error> {
         let conn = Connection::new(options).compat().await?;
@@ -44,7 +50,7 @@ impl TeamSpeakConnection {
                     for event in *events {
                         if let Some(msg) = get_message(event) {
                             let tx = tx.lock().unwrap();
-                            tx.send(ApplicationMessage::TextMessage(msg)).unwrap();
+                            tx.send(MusicBotMessage::TextMessage(msg)).unwrap();
                         }
                     }
                 }
@@ -72,23 +78,34 @@ impl TeamSpeakConnection {
         tokio::run(send_packet);
     }
 
-    pub fn join_channel_of_user(&self, id: ClientId) {
-        let channel = self
-            .conn
-            .lock()
-            .clients
-            .get(&id)
-            .expect("can find poke sender")
-            .channel;
-        tokio::spawn(
-            self.conn
-                .lock()
-                .to_mut()
-                .get_client(&self.conn.lock().own_client)
-                .expect("can get myself")
-                .set_channel(channel)
-                .map_err(|e| error!("Failed to switch channel: {}", e)),
-        );
+    pub fn channel_path_of_user(&self, id: ClientId) -> String {
+        let conn = self.conn.lock();
+
+        let channel_id = conn.clients.get(&id).expect("can find poke sender").channel;
+
+        let mut channel = conn
+            .channels
+            .get(&channel_id)
+            .expect("can find user channel");
+
+        let mut names = vec![&channel.name[..]];
+
+        // Channel 0 is the root channel
+        while channel.parent != ChannelId(0) {
+            names.push("/");
+            channel = conn
+                .channels
+                .get(&channel.parent)
+                .expect("can find user channel");
+            names.push(&channel.name);
+        }
+
+        let mut path = String::new();
+        while let Some(name) = names.pop() {
+            path.push_str(name);
+        }
+
+        path
     }
 
     pub fn set_nickname(&self, name: &str) {
@@ -120,6 +137,21 @@ impl TeamSpeakConnection {
                 .to_mut()
                 .send_message(MessageTarget::Channel, text)
                 .map_err(|e| error!("Failed to send message: {}", e)),
+        );
+    }
+
+    pub fn disconnect(&self, reason: &str) {
+        let opt = DisconnectOptions::new()
+            .reason(Reason::Clientdisconnect)
+            .message(reason);
+        tokio::spawn(
+            self.conn
+                .disconnect(opt)
+                .map_err(|e| error!("Failed to send message: {}", e)),
+        );
+        // Might or might not be required to keep tokio running while the bot disconnects
+        tokio::spawn(
+            tokio::timer::Delay::new(Instant::now() + Duration::from_secs(1)).map_err(|_| ()),
         );
     }
 }
