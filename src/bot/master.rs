@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 
 use futures::future::{FutureExt, TryFutureExt};
 use futures01::future::Future as Future01;
@@ -17,7 +18,7 @@ use crate::bot::{MusicBot, MusicBotMessage, MusicBotArgs};
 pub struct MasterBot {
     config: MasterConfig,
     teamspeak: Option<Arc<TeamSpeakConnection>>,
-    connected_bots: Arc<Mutex<Vec<Arc<MusicBot>>>>,
+    connected_bots: Arc<Mutex<HashMap<String, Arc<MusicBot>>>>,
 }
 
 impl MasterBot {
@@ -63,7 +64,7 @@ impl MasterBot {
         let bot = Arc::new(Self {
             config,
             teamspeak: connection,
-            connected_bots: Arc::new(Mutex::new(Vec::new())),
+            connected_bots: Arc::new(Mutex::new(HashMap::new())),
         });
 
         let cbot = bot.clone();
@@ -85,22 +86,31 @@ impl MasterBot {
             String::from("local")
         };
 
-        info!("Connecting to {} on {}", channel, self.config.address);
         let preset = self.config.bots[0].clone();
+        let name = format!("{}({})", preset.name, self.config.name);
+
+        let cconnected_bots = self.connected_bots.clone();
+        let disconnect_cb = Box::new(move |n| {
+            let mut bots = cconnected_bots.lock().expect("Mutex was not poisoned");
+            bots.remove(&n);
+        });
+
+        info!("Connecting to {} on {}", channel, self.config.address);
         let bot_args = MusicBotArgs {
-            name: format!("{}({})", preset.name, self.config.name),
+            name: name.clone(),
             owner: preset.owner,
             local: self.config.local,
             address: self.config.address.clone(),
             id: preset.id,
             channel,
             verbose: self.config.verbose,
+            disconnect_cb,
         };
 
         let (app, fut) = MusicBot::new(bot_args).await;
         tokio::spawn(fut.unit_error().boxed().compat().map(|_| ()));
         let mut bots = self.connected_bots.lock().expect("Mutex was not poisoned");
-        bots.push(app);
+        bots.insert(name, app);
     }
 
     async fn on_message(&self, message: MusicBotMessage) -> Result<(), AudioPlayerError> {

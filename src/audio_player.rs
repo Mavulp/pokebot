@@ -313,6 +313,7 @@ impl AudioPlayer {
                     MessageView::Application(content) => {
                         if let Some(s) = content.get_structure() {
                             if s.get_name() == "quit" {
+                                self.reset().unwrap();
                                 return PollResult::Quit;
                             }
                         }

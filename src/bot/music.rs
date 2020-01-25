@@ -44,7 +44,6 @@ pub struct MusicBot {
     state: Arc<Mutex<State>>,
 }
 
-#[derive(Debug)]
 pub struct MusicBotArgs {
     pub name: String,
     pub owner: Option<ClientId>,
@@ -53,6 +52,7 @@ pub struct MusicBotArgs {
     pub id: Identity,
     pub channel: String,
     pub verbose: u8,
+    pub disconnect_cb: Box<dyn FnMut(String) + Send + Sync>,
 }
 
 impl MusicBot {
@@ -104,7 +104,7 @@ impl MusicBot {
         }
 
         let bot = Arc::new(Self {
-            name: args.name,
+            name: args.name.clone(),
             player,
             teamspeak: connection,
             playlist,
@@ -112,11 +112,14 @@ impl MusicBot {
         });
 
         let cbot = bot.clone();
+        let mut disconnect_cb = args.disconnect_cb;
+        let name = args.name;
         let msg_loop = async move {
             'outer: loop {
                 while let Some(msg) = rx.recv().await {
                     if let MusicBotMessage::Quit(reason) = msg {
                         cbot.with_teamspeak(|ts| ts.disconnect(&reason));
+                        disconnect_cb(name);
                         break 'outer;
                     }
                     cbot.on_message(msg).await.unwrap();
