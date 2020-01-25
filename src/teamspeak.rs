@@ -19,17 +19,53 @@ pub struct TeamSpeakConnection {
     conn: Connection,
 }
 
-fn get_message<'a>(event: &Event) -> Option<Message> {
+fn get_message<'a>(event: &Event) -> Option<MusicBotMessage> {
+    use tsclientlib::events::{PropertyId, PropertyValue};
+
     match event {
         Event::Message {
             from: target,
             invoker: sender,
             message: msg,
-        } => Some(Message {
-            target: target.clone(),
+        } => Some(MusicBotMessage::TextMessage(Message {
+            target: *target,
             invoker: sender.clone(),
             text: msg.clone(),
-        }),
+        })),
+        Event::PropertyChanged {
+            id: property,
+            old: from,
+            invoker: _,
+        } => match property {
+            PropertyId::ClientChannel(client) => {
+                if let PropertyValue::ChannelId(from) = from {
+                    Some(MusicBotMessage::ClientChannel {
+                        client: *client,
+                        old_channel: *from,
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        },
+        Event::PropertyRemoved {
+            id: property,
+            old: client,
+            invoker: _,
+        } => match property {
+            PropertyId::Client(id) => {
+                if let PropertyValue::Client(client) = client {
+                    Some(MusicBotMessage::ClientDisconnected {
+                        id: *id,
+                        client: client.clone(),
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -49,8 +85,9 @@ impl TeamSpeakConnection {
                 if let ConEvents(_conn, events) = e {
                     for event in *events {
                         if let Some(msg) = get_message(event) {
-                            let tx = tx.lock().unwrap();
-                            tx.send(MusicBotMessage::TextMessage(msg)).unwrap();
+                            let tx = tx.lock().expect("Mutex was not poisoned");
+                            // Ignore the result because the receiver might get dropped first.
+                            let _ = tx.send(msg);
                         }
                     }
                 }
@@ -106,6 +143,26 @@ impl TeamSpeakConnection {
         }
 
         path
+    }
+
+    pub fn my_channel(&self) -> ChannelId {
+        let conn = self.conn.lock();
+        conn.clients
+            .get(&conn.own_client)
+            .expect("can find myself")
+            .channel
+    }
+
+    pub fn user_count(&self, channel: ChannelId) -> u32 {
+        let conn = self.conn.lock();
+        let mut count = 0;
+        for (_, client) in &conn.clients {
+            if client.channel == channel {
+                count += 1;
+            }
+        }
+
+        count
     }
 
     pub fn set_nickname(&self, name: &str) {

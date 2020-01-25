@@ -6,9 +6,9 @@ use std::thread;
 use log::{debug, info};
 use structopt::StructOpt;
 use tokio02::sync::mpsc::UnboundedSender;
-use tsclientlib::{ClientId, ConnectOptions, Identity, Invoker, MessageTarget};
+use tsclientlib::{data, ChannelId, ClientId, ConnectOptions, Identity, Invoker, MessageTarget};
 
-use crate::audio_player::{AudioPlayerError, AudioPlayer, PollResult};
+use crate::audio_player::{AudioPlayer, AudioPlayerError, PollResult};
 use crate::command::Command;
 use crate::playlist::Playlist;
 use crate::teamspeak::TeamSpeakConnection;
@@ -32,6 +32,14 @@ pub enum State {
 #[derive(Debug)]
 pub enum MusicBotMessage {
     TextMessage(Message),
+    ClientChannel {
+        client: ClientId,
+        old_channel: ChannelId,
+    },
+    ClientDisconnected {
+        id: ClientId,
+        client: data::Client,
+    },
     StateChange(State),
     Quit(String),
 }
@@ -179,6 +187,20 @@ impl MusicBot {
         }
     }
 
+    fn my_channel(&self) -> ChannelId {
+        self.teamspeak
+            .as_ref()
+            .map(|ts| ts.my_channel())
+            .expect("my_channel needs ts")
+    }
+
+    fn user_count(&self, channel: ChannelId) -> u32 {
+        self.teamspeak
+            .as_ref()
+            .map(|ts| ts.user_count(channel))
+            .expect("user_count needs ts")
+    }
+
     fn send_message(&self, text: &str) {
         debug!("Sending message to TeamSpeak: {}", text);
 
@@ -305,6 +327,22 @@ impl MusicBot {
             MusicBotMessage::TextMessage(message) => {
                 if MessageTarget::Channel == message.target {
                     self.on_text(message).await?;
+                }
+            }
+            MusicBotMessage::ClientChannel {
+                client: _,
+                old_channel,
+            } => {
+                let my_channel = self.my_channel();
+                if old_channel == my_channel && self.user_count(my_channel) <= 1 {
+                    self.quit(String::from("Channel is empty"));
+                }
+            }
+            MusicBotMessage::ClientDisconnected { id: _, client } => {
+                let old_channel = client.channel;
+                let my_channel = self.my_channel();
+                if old_channel == my_channel && self.user_count(my_channel) <= 1 {
+                    self.quit(String::from("Channel is empty"));
                 }
             }
             MusicBotMessage::StateChange(state) => {

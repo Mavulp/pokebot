@@ -1,10 +1,10 @@
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 
 use futures::future::{FutureExt, TryFutureExt};
 use futures01::future::Future as Future01;
-use log::{info};
+use log::info;
 use serde::{Deserialize, Serialize};
 use tsclientlib::{ClientId, ConnectOptions, Identity, MessageTarget};
 
@@ -13,7 +13,7 @@ use crate::teamspeak::TeamSpeakConnection;
 
 use crate::Args;
 
-use crate::bot::{MusicBot, MusicBotMessage, MusicBotArgs};
+use crate::bot::{MusicBot, MusicBotArgs, MusicBotMessage};
 
 pub struct MasterBot {
     config: MasterConfig,
