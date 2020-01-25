@@ -35,7 +35,11 @@ pub struct Args {
         help = "The address of the server to connect to"
     )]
     address: Option<String>,
-    #[structopt(help = "Configuration file", parse(from_os_str), default_value = "config.toml")]
+    #[structopt(
+        help = "Configuration file",
+        parse(from_os_str),
+        default_value = "config.toml"
+    )]
     config_path: PathBuf,
     #[structopt(
         short = "d",
