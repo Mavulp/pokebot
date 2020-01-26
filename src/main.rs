@@ -106,6 +106,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let toml = toml::to_string(&config)?;
         let mut file = File::create(&args.config_path)?;
         file.write_all(toml.as_bytes())?;
+
         return Ok(());
     }
 

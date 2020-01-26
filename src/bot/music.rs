@@ -336,17 +336,11 @@ impl MusicBot {
                 client: _,
                 old_channel,
             } => {
-                let my_channel = self.my_channel();
-                if old_channel == my_channel && self.user_count(my_channel) <= 1 {
-                    self.quit(String::from("Channel is empty"));
-                }
+                self.on_client_left_channel(old_channel);
             }
             MusicBotMessage::ClientDisconnected { id: _, client } => {
                 let old_channel = client.channel;
-                let my_channel = self.my_channel();
-                if old_channel == my_channel && self.user_count(my_channel) <= 1 {
-                    self.quit(String::from("Channel is empty"));
-                }
+                self.on_client_left_channel(old_channel);
             }
             MusicBotMessage::StateChange(state) => {
                 self.on_state(state)?;
@@ -355,6 +349,13 @@ impl MusicBot {
         }
 
         Ok(())
+    }
+
+    fn on_client_left_channel(&self, old_channel: ChannelId) {
+        let my_channel = self.my_channel();
+        if old_channel == my_channel && self.user_count(my_channel) <= 1 {
+            self.quit(String::from("Channel is empty"));
+        }
     }
 
     pub fn quit(&self, reason: String) {
