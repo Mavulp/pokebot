@@ -54,13 +54,14 @@ pub struct MusicBot {
 
 pub struct MusicBotArgs {
     pub name: String,
-    pub owner: Option<ClientId>,
+    pub name_index: usize,
+    pub id_index: usize,
     pub local: bool,
     pub address: String,
     pub id: Identity,
     pub channel: String,
     pub verbose: u8,
-    pub disconnect_cb: Box<dyn FnMut(String) + Send + Sync>,
+    pub disconnect_cb: Box<dyn FnMut(String, usize, usize) + Send + Sync>,
 }
 
 impl MusicBot {
@@ -77,7 +78,7 @@ impl MusicBot {
 
             let con_config = ConnectOptions::new(args.address)
                 .version(tsclientlib::Version::Linux_3_3_2)
-                .name(args.name.clone())
+                .name(format!("🎵 {}", args.name))
                 .identity(args.id)
                 .log_commands(args.verbose >= 1)
                 .log_packets(args.verbose >= 2)
@@ -122,12 +123,14 @@ impl MusicBot {
         let cbot = bot.clone();
         let mut disconnect_cb = args.disconnect_cb;
         let name = args.name;
+        let name_index = args.name_index;
+        let id_index = args.id_index;
         let msg_loop = async move {
             'outer: loop {
                 while let Some(msg) = rx.recv().await {
                     if let MusicBotMessage::Quit(reason) = msg {
                         cbot.with_teamspeak(|ts| ts.disconnect(&reason));
-                        disconnect_cb(name);
+                        disconnect_cb(name, name_index, id_index);
                         break 'outer;
                     }
                     cbot.on_message(msg).await.unwrap();
@@ -294,13 +297,13 @@ impl MusicBot {
         if *current_state != state {
             match state {
                 State::Playing => {
-                    self.set_nickname(&format!("{} - Playing", self.name));
+                    self.set_nickname(&format!("🎵 {} - Playing", self.name));
                 }
                 State::Paused => {
-                    self.set_nickname(&format!("{} - Paused", self.name));
+                    self.set_nickname(&format!("🎵 {} - Paused", self.name));
                 }
                 State::Stopped => {
-                    self.set_nickname(&self.name);
+                    self.set_nickname(&format!("🎵 {}", self.name));
                     self.set_description("");
                 }
                 State::EndOfStream => {
@@ -310,7 +313,7 @@ impl MusicBot {
 
                         self.start_playing_audio(request);
                     } else {
-                        self.set_nickname(&self.name);
+                        self.set_nickname(&format!("🎵 {}", self.name));
                         self.set_description("");
                     }
                 }

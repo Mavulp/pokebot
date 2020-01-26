@@ -197,6 +197,16 @@ impl TeamSpeakConnection {
         );
     }
 
+    pub fn send_message_to_user(&self, id: ClientId, text: &str) {
+        tokio::spawn(
+            self.conn
+                .lock()
+                .to_mut()
+                .send_message(MessageTarget::Client(id), text)
+                .map_err(|e| error!("Failed to send message: {}", e)),
+        );
+    }
+
     pub fn disconnect(&self, reason: &str) {
         let opt = DisconnectOptions::new()
             .reason(Reason::Clientdisconnect)

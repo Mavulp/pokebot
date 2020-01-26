@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use futures::future::{FutureExt, TryFutureExt};
 use futures01::future::Future as Future01;
 use log::info;
+use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 use serde::{Deserialize, Serialize};
 use tsclientlib::{ClientId, ConnectOptions, Identity, MessageTarget};
 
@@ -16,8 +17,11 @@ use crate::Args;
 use crate::bot::{MusicBot, MusicBotArgs, MusicBotMessage};
 
 pub struct MasterBot {
-    config: MasterConfig,
-    teamspeak: Option<Arc<TeamSpeakConnection>>,
+    config: Arc<MasterConfig>,
+    rng: Arc<Mutex<SmallRng>>,
+    available_names: Arc<Mutex<Vec<usize>>>,
+    available_ids: Arc<Mutex<Vec<usize>>>,
+    teamspeak: Arc<TeamSpeakConnection>,
     connected_bots: Arc<Mutex<HashMap<String, Arc<MusicBot>>>>,
 }
 
@@ -25,44 +29,42 @@ impl MasterBot {
     pub async fn new(args: MasterArgs) -> (Arc<Self>, impl Future) {
         let (tx, mut rx) = tokio02::sync::mpsc::unbounded_channel();
         let tx = Arc::new(Mutex::new(tx));
-        let connection = if args.local {
-            info!("Starting in CLI mode");
+        info!("Starting in TeamSpeak mode");
 
-            None
-        } else {
-            info!("Starting in TeamSpeak mode");
+        let mut con_config = ConnectOptions::new(args.address.clone())
+            .version(tsclientlib::Version::Linux_3_3_2)
+            .name(args.master_name.clone())
+            .identity(args.id)
+            .log_commands(args.verbose >= 1)
+            .log_packets(args.verbose >= 2)
+            .log_udp_packets(args.verbose >= 3);
 
-            let mut con_config = ConnectOptions::new(args.address.clone())
-                .version(tsclientlib::Version::Linux_3_3_2)
-                .name(args.name.clone())
-                .identity(args.id)
-                .log_commands(args.verbose >= 1)
-                .log_packets(args.verbose >= 2)
-                .log_udp_packets(args.verbose >= 3);
+        if let Some(channel) = args.channel {
+            con_config = con_config.channel(channel);
+        }
 
-            if let Some(channel) = args.channel {
-                con_config = con_config.channel(channel);
-            }
+        let connection = Arc::new(
+            TeamSpeakConnection::new(tx.clone(), con_config)
+                .await
+                .unwrap(),
+        );
 
-            let connection = Arc::new(
-                TeamSpeakConnection::new(tx.clone(), con_config)
-                    .await
-                    .unwrap(),
-            );
-
-            Some(connection)
-        };
-
-        let config = MasterConfig {
-            name: args.name,
+        let config = Arc::new(MasterConfig {
+            master_name: args.master_name,
             address: args.address,
-            bots: args.bots,
+            names: args.names,
+            ids: args.ids,
             local: args.local,
             verbose: args.verbose,
-        };
+        });
 
+        let name_count = config.names.len();
+        let id_count = config.ids.len();
         let bot = Arc::new(Self {
             config,
+            rng: Arc::new(Mutex::new(SmallRng::from_entropy())),
+            available_names: Arc::new(Mutex::new((0..name_count).collect())),
+            available_ids: Arc::new(Mutex::new((0..id_count).collect())),
             teamspeak: connection,
             connected_bots: Arc::new(Mutex::new(HashMap::new())),
         });
@@ -80,28 +82,62 @@ impl MasterBot {
     }
 
     async fn spawn_bot(&self, id: ClientId) {
-        let channel = if let Some(ts) = &self.teamspeak {
-            ts.channel_path_of_user(id)
-        } else {
-            String::from("local")
+        let channel = self.teamspeak.channel_path_of_user(id);
+
+        let (name, name_index) = {
+            let mut available_names = self.available_names.lock().expect("Mutex was not poisoned");
+            let mut rng = self.rng.lock().expect("Mutex was not poisoned");
+            available_names.shuffle(&mut *rng);
+            let name_index = match available_names.pop() {
+                Some(v) => v,
+                None => {
+                    self.teamspeak.send_message_to_user(
+                        id,
+                        "Out of names. Too many bots are already connected!",
+                    );
+                    return;
+                }
+            };
+
+            (self.config.names[name_index].clone(), name_index)
         };
 
-        let preset = self.config.bots[0].clone();
-        let name = format!("{}({})", preset.name, self.config.name);
+        let (id, id_index) = {
+            let mut available_ids = self.available_ids.lock().expect("Mutex was not poisoned");
+            let mut rng = self.rng.lock().expect("Mutex was not poisoned");
+            available_ids.shuffle(&mut *rng);
+            let id_index = match available_ids.pop() {
+                Some(v) => v,
+                None => {
+                    self.teamspeak.send_message_to_user(
+                        id,
+                        "Out of identities. Too many bots are already connected!",
+                    );
+                    return;
+                }
+            };
+
+            (self.config.ids[id_index].clone(), id_index)
+        };
 
         let cconnected_bots = self.connected_bots.clone();
-        let disconnect_cb = Box::new(move |n| {
+        let cavailable_names = self.available_names.clone();
+        let cavailable_ids = self.available_ids.clone();
+        let disconnect_cb = Box::new(move |n, name_index, id_index| {
             let mut bots = cconnected_bots.lock().expect("Mutex was not poisoned");
             bots.remove(&n);
+            cavailable_names.lock().expect("Mutex was not poisoned").push(name_index);
+            cavailable_ids.lock().expect("Mutex was not poisoned").push(id_index);
         });
 
         info!("Connecting to {} on {}", channel, self.config.address);
         let bot_args = MusicBotArgs {
             name: name.clone(),
-            owner: preset.owner,
+            name_index,
+            id_index,
             local: self.config.local,
             address: self.config.address.clone(),
-            id: preset.id,
+            id,
             channel,
             verbose: self.config.verbose,
             disconnect_cb,
@@ -128,15 +164,16 @@ impl MasterBot {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MasterArgs {
     #[serde(default = "default_name")]
-    pub name: String,
+    pub master_name: String,
     #[serde(default = "default_local")]
     pub local: bool,
     pub address: String,
     pub channel: Option<String>,
     #[serde(default = "default_verbose")]
     pub verbose: u8,
+    pub names: Vec<String>,
     pub id: Identity,
-    pub bots: Vec<BotConfig>,
+    pub ids: Vec<Identity>,
 }
 
 fn default_name() -> String {
@@ -163,8 +200,9 @@ impl MasterArgs {
         };
 
         Self {
-            name: self.name,
-            bots: self.bots,
+            master_name: self.master_name,
+            names: self.names,
+            ids: self.ids,
             local,
             address,
             id: self.id,
@@ -175,39 +213,10 @@ impl MasterArgs {
 }
 
 pub struct MasterConfig {
-    pub name: String,
+    pub master_name: String,
     pub address: String,
-    pub bots: Vec<BotConfig>,
+    pub names: Vec<String>,
+    pub ids: Vec<Identity>,
     pub local: bool,
     pub verbose: u8,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct BotConfig {
-    pub name: String,
-    #[serde(
-        deserialize_with = "client_id_deserialize",
-        serialize_with = "client_id_serialize"
-    )]
-    pub owner: Option<ClientId>,
-    pub id: Identity,
-}
-
-fn client_id_serialize<S>(c: &Option<ClientId>, s: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    match c {
-        Some(c) => s.serialize_some(&c.0),
-        None => s.serialize_none(),
-    }
-}
-
-fn client_id_deserialize<'de, D>(deserializer: D) -> Result<Option<ClientId>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let id: Option<u16> = Deserialize::deserialize(deserializer)?;
-
-    Ok(id.map(|id| ClientId(id)))
 }

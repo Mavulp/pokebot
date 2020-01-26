@@ -16,7 +16,7 @@ mod playlist;
 mod teamspeak;
 mod youtube_dl;
 
-use bot::{BotConfig, MasterArgs, MasterBot};
+use bot::{MasterArgs, MasterBot};
 
 #[derive(StructOpt, Debug)]
 #[structopt(raw(global_settings = "&[AppSettings::ColoredHelp]"))]
@@ -61,22 +61,18 @@ pub struct Args {
 }
 
 fn main() {
-    //let example = BotConfig {
-    //name: String::from("asd"),
-    //id: Identity::create().unwrap(),
-    //owner: Some(ClientId(12)),
-    //};
-    //let bots = vec![example];
+    //let ids = vec![Identity::create().unwrap()];
     //println!(
     //"{}",
     //toml::to_string(&MasterArgs {
-    //name: String::from("PokeBot"),
+    //master_name: String::from("PokeBot"),
     //id: Identity::create().unwrap(),
+    //names: vec![String::from("test")],
     //address: String::from("localhost"),
     //channel: Some(String::from("Poke If Needed")),
     //local: false,
     //verbose: 0,
-    //bots,
+    //ids,
     //})
     //.map_err(|e| panic!(e.to_string()))
     //.unwrap()
@@ -102,14 +98,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut config: MasterArgs = toml::from_str(&toml)?;
 
     if let Some(count) = args.gen_id_count {
-        for i in 0..count {
+        for _ in 0..count {
             let id = Identity::create().expect("Failed to create id");
-            let bot = BotConfig {
-                name: format!("{}", i),
-                owner: None,
-                id,
-            };
-            config.bots.push(bot);
+            config.ids.push(id);
         }
 
         let toml = toml::to_string(&config)?;
