@@ -231,13 +231,12 @@ impl AudioPlayer {
         Ok(())
     }
 
-    pub fn stop_current(&self) {
+    pub fn stop_current(&self) -> Result<(), AudioPlayerError> {
         info!("Stopping pipeline, sending EOS");
 
-        let handled = self.http_src.send_event(gst::Event::new_eos().build());
-        if !handled {
-            warn!("EOS event was not handled");
-        }
+        self.bus.post(&gst::Message::new_eos().build())?;
+
+        Ok(())
     }
 
     fn send_state(&self, state: State) {
