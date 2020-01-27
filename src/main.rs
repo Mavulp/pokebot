@@ -192,7 +192,7 @@ impl Application {
 
                 if !self.player.is_started() {
                     if !playlist.is_empty() {
-                        self.player.stop_current();
+                        self.player.stop_current()?;
                     }
                 } else {
                     self.player.play()?;
@@ -214,7 +214,7 @@ impl Application {
                 let playlist = self.playlist.lock().expect("Mutex was not poisoned");
                 if !playlist.is_empty() {
                     info!("Skipping to next track");
-                    self.player.stop_current();
+                    self.player.stop_current()?;
                 } else {
                     info!("Playlist empty, cannot skip");
                     self.player.reset()?;
