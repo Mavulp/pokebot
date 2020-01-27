@@ -1,0 +1,15 @@
+[Unit]
+Description=TeamSpeak 3 Music Bot
+After=network-online.target
+
+[Service]
+Type=simple
+User=pokebot
+Group=pokebot
+WorkingDirectory=/etc/pokebot
+ExecStart=/usr/bin/pokebot
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
