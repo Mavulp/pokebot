@@ -61,23 +61,6 @@ pub struct Args {
 }
 
 fn main() {
-    //let ids = vec![Identity::create().unwrap()];
-    //println!(
-    //"{}",
-    //toml::to_string(&MasterArgs {
-    //master_name: String::from("PokeBot"),
-    //id: Identity::create().unwrap(),
-    //names: vec![String::from("test")],
-    //address: String::from("localhost"),
-    //channel: Some(String::from("Poke If Needed")),
-    //local: false,
-    //verbose: 0,
-    //ids,
-    //})
-    //.map_err(|e| panic!(e.to_string()))
-    //.unwrap()
-    //);
-    //panic!();
     if let Err(e) = run() {
         println!("Error: {}", e);
     }
