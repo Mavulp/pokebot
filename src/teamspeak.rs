@@ -115,10 +115,14 @@ impl TeamSpeakConnection {
         tokio::run(send_packet);
     }
 
-    pub fn channel_path_of_user(&self, id: ClientId) -> String {
+    pub fn channel_of_user(&self, id: ClientId) -> Option<ChannelId> {
+        Some(self.conn.lock().clients.get(&id)?.channel)
+    }
+
+    pub fn channel_path_of_user(&self, id: ClientId) -> Option<String> {
         let conn = self.conn.lock();
 
-        let channel_id = conn.clients.get(&id).expect("can find poke sender").channel;
+        let channel_id = conn.clients.get(&id)?.channel;
 
         let mut channel = conn
             .channels
@@ -142,7 +146,7 @@ impl TeamSpeakConnection {
             path.push_str(name);
         }
 
-        path
+        Some(path)
     }
 
     pub fn my_channel(&self) -> ChannelId {

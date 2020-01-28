@@ -190,7 +190,11 @@ impl MusicBot {
         }
     }
 
-    fn my_channel(&self) -> ChannelId {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn my_channel(&self) -> ChannelId {
         self.teamspeak
             .as_ref()
             .map(|ts| ts.my_channel())

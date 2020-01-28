@@ -82,7 +82,40 @@ impl MasterBot {
     }
 
     async fn spawn_bot(&self, id: ClientId) {
-        let channel = self.teamspeak.channel_path_of_user(id);
+        let channel = self
+            .teamspeak
+            .channel_of_user(id)
+            .expect("Can find poke sender");
+
+        if channel == self.teamspeak.my_channel() {
+            self.teamspeak.send_message_to_user(
+                id,
+                &format!(
+                    "Joining the channel of \"{}\" is not allowed",
+                    self.config.master_name
+                ),
+            );
+            return;
+        }
+
+        for (_, bot) in &*self.connected_bots.lock().expect("Mutex was not poisoned") {
+            if bot.my_channel() == channel {
+                self.teamspeak.send_message_to_user(
+                    id,
+                    &format!(
+                        "\"{}\" is already in this channel. \
+                         Multiple bots in one channel are not allowed.",
+                        bot.name()
+                    ),
+                );
+                return;
+            }
+        }
+
+        let channel_path = self
+            .teamspeak
+            .channel_path_of_user(id)
+            .expect("can find poke sender");
 
         let (name, name_index) = {
             let mut available_names = self.available_names.lock().expect("Mutex was not poisoned");
@@ -126,11 +159,17 @@ impl MasterBot {
         let disconnect_cb = Box::new(move |n, name_index, id_index| {
             let mut bots = cconnected_bots.lock().expect("Mutex was not poisoned");
             bots.remove(&n);
-            cavailable_names.lock().expect("Mutex was not poisoned").push(name_index);
-            cavailable_ids.lock().expect("Mutex was not poisoned").push(id_index);
+            cavailable_names
+                .lock()
+                .expect("Mutex was not poisoned")
+                .push(name_index);
+            cavailable_ids
+                .lock()
+                .expect("Mutex was not poisoned")
+                .push(id_index);
         });
 
-        info!("Connecting to {} on {}", channel, self.config.address);
+        info!("Connecting to {} on {}", channel_path, self.config.address);
         let bot_args = MusicBotArgs {
             name: name.clone(),
             name_index,
@@ -138,7 +177,7 @@ impl MasterBot {
             local: self.config.local,
             address: self.config.address.clone(),
             id,
-            channel,
+            channel: channel_path,
             verbose: self.config.verbose,
             disconnect_cb,
         };
