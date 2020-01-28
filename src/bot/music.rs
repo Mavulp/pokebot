@@ -368,6 +368,7 @@ impl MusicBot {
 }
 
 fn spawn_stdin_reader(tx: Arc<Mutex<UnboundedSender<MusicBotMessage>>>) {
+    debug!("Spawning stdin reader thread");
     thread::spawn(move || {
         let stdin = ::std::io::stdin();
         let lock = stdin.lock();
@@ -375,7 +376,7 @@ fn spawn_stdin_reader(tx: Arc<Mutex<UnboundedSender<MusicBotMessage>>>) {
             let line = line.unwrap();
 
             let message = MusicBotMessage::TextMessage(Message {
-                target: MessageTarget::Server,
+                target: MessageTarget::Channel,
                 invoker: Invoker {
                     name: String::from("stdin"),
                     id: ClientId(0),

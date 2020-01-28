@@ -3,7 +3,6 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 
 use futures::future::{FutureExt, TryFutureExt};
-use futures01::future::Future as Future01;
 use log::{debug, info};
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
@@ -16,7 +15,7 @@ mod playlist;
 mod teamspeak;
 mod youtube_dl;
 
-use bot::{MasterArgs, MasterBot};
+use bot::{MasterArgs, MasterBot, MusicBot, MusicBotArgs};
 
 #[derive(StructOpt, Debug)]
 #[structopt(raw(global_settings = "&[AppSettings::ColoredHelp]"))]
@@ -69,8 +68,6 @@ fn main() {
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     log4rs::init_file("log4rs.yml", Default::default()).unwrap();
 
-    info!("Starting PokeBot!");
-
     // Parse command line options
     let args = Args::from_args();
 
@@ -95,12 +92,32 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let bot_args = config.merge(args);
 
+    info!("Starting PokeBot!");
     debug!("Received CLI arguments: {:?}", std::env::args());
 
     tokio::run(
         async {
-            let (_, fut) = MasterBot::new(bot_args).await;
-            tokio::spawn(fut.unit_error().boxed().compat().map(|_| ()));
+            if bot_args.local {
+                let name = bot_args.names[0].clone();
+                let id = bot_args.ids[0].clone();
+
+                let disconnect_cb = Box::new(move |_, _, _| {});
+
+                let bot_args = MusicBotArgs {
+                    name: name,
+                    name_index: 0,
+                    id_index: 0,
+                    local: true,
+                    address: bot_args.address.clone(),
+                    id,
+                    channel: String::from("local"),
+                    verbose: bot_args.verbose,
+                    disconnect_cb,
+                };
+                MusicBot::new(bot_args).await.1.await;
+            } else {
+                MasterBot::new(bot_args).await.1.await;
+            }
         }
         .unit_error()
         .boxed()
