@@ -1,0 +1,18 @@
+# Name of the master bot
+name = "PokeBot"
+# Address of the server to connect to
+address = "localhost"
+# Channel for the master bot
+channel = "Lobby"
+
+# Names for the music bots
+names = ["MusicBot"]
+
+# Identity of the master bot
+[id]
+key = "insert-key-here"
+counter = 0
+max_counter = 0
+
+# Add identities for music bots here
+# [[ids]]

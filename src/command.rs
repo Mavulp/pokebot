@@ -27,4 +27,6 @@ pub enum Command {
     Clear,
     /// Changes the volume to the specified value
     Volume { percent: f64 },
+    /// Leaves the channel
+    Leave,
 }

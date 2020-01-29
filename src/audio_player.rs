@@ -6,7 +6,7 @@ use gstreamer as gst;
 use gstreamer_app::{AppSink, AppSinkCallbacks};
 use gstreamer_audio::{StreamVolume, StreamVolumeFormat};
 
-use crate::{ApplicationMessage, State};
+use crate::bot::{MusicBotMessage, State};
 use glib::BoolError;
 use log::{debug, error, info, warn};
 use std::sync::{Arc, Mutex};
@@ -14,22 +14,10 @@ use tokio02::sync::mpsc::UnboundedSender;
 
 static GST_INIT: Once = Once::new();
 
-#[derive(Debug)]
-pub enum AudioPlayerError {
-    GStreamerError(glib::error::BoolError),
-    StateChangeFailed,
-}
-
-impl From<glib::error::BoolError> for AudioPlayerError {
-    fn from(err: BoolError) -> Self {
-        AudioPlayerError::GStreamerError(err)
-    }
-}
-
-impl From<gst::StateChangeError> for AudioPlayerError {
-    fn from(_err: gst::StateChangeError) -> Self {
-        AudioPlayerError::StateChangeFailed
-    }
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum PollResult {
+    Continue,
+    Quit,
 }
 
 pub struct AudioPlayer {
@@ -38,7 +26,7 @@ pub struct AudioPlayer {
     http_src: gst::Element,
 
     volume: gst::Element,
-    sender: Arc<Mutex<UnboundedSender<ApplicationMessage>>>,
+    sender: Arc<Mutex<UnboundedSender<MusicBotMessage>>>,
 }
 
 fn make_element(factoryname: &str, display_name: &str) -> Result<gst::Element, AudioPlayerError> {
@@ -87,7 +75,7 @@ fn add_decode_bin_new_pad_callback(
 
 impl AudioPlayer {
     pub fn new(
-        sender: Arc<Mutex<UnboundedSender<ApplicationMessage>>>,
+        sender: Arc<Mutex<UnboundedSender<MusicBotMessage>>>,
         callback: Option<Box<dyn FnMut(&[u8]) + Send>>,
     ) -> Result<Self, AudioPlayerError> {
         GST_INIT.call_once(|| gst::init().unwrap());
@@ -239,13 +227,27 @@ impl AudioPlayer {
         Ok(())
     }
 
+    pub fn quit(&self, reason: String) {
+        info!("Quitting audio player");
+
+        if let Err(e) = self
+            .bus
+            .post(&gst::Message::new_application(gst::Structure::new_empty("quit")).build())
+        {
+            warn!("Failed to send \"quit\" app event: {}", e);
+        }
+
+        let sender = self.sender.lock().unwrap();
+        sender.send(MusicBotMessage::Quit(reason)).unwrap();
+    }
+
     fn send_state(&self, state: State) {
         info!("Sending state {:?} to application", state);
         let sender = self.sender.lock().unwrap();
-        sender.send(ApplicationMessage::StateChange(state)).unwrap();
+        sender.send(MusicBotMessage::StateChange(state)).unwrap();
     }
 
-    pub fn poll(&self) {
+    pub fn poll(&self) -> PollResult {
         debug!("Polling GStreamer");
         'outer: loop {
             while let Some(msg) = self.bus.timed_pop(gst::ClockTime(None)) {
@@ -308,12 +310,40 @@ impl AudioPlayer {
                         );
                         break 'outer;
                     }
+                    MessageView::Application(content) => {
+                        if let Some(s) = content.get_structure() {
+                            if s.get_name() == "quit" {
+                                self.reset().unwrap();
+                                return PollResult::Quit;
+                            }
+                        }
+                    }
                     _ => {
-                        // debug!("{:?}", msg)
+                        //debug!("{:?}", msg)
                     }
                 };
             }
         }
         debug!("Left GStreamer message loop");
+
+        PollResult::Continue
+    }
+}
+
+#[derive(Debug)]
+pub enum AudioPlayerError {
+    GStreamerError(glib::error::BoolError),
+    StateChangeFailed,
+}
+
+impl From<glib::error::BoolError> for AudioPlayerError {
+    fn from(err: BoolError) -> Self {
+        AudioPlayerError::GStreamerError(err)
+    }
+}
+
+impl From<gst::StateChangeError> for AudioPlayerError {
+    fn from(_err: gst::StateChangeError) -> Self {
+        AudioPlayerError::StateChangeFailed
     }
 }
