@@ -69,6 +69,8 @@ impl MasterBot {
             connected_bots: Arc::new(Mutex::new(HashMap::new())),
         });
 
+        bot.teamspeak.set_description("Poke me if you want a music bot!");
+
         let cbot = bot.clone();
         let msg_loop = async move {
             loop {
