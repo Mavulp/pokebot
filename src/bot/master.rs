@@ -18,11 +18,15 @@ use crate::bot::{MusicBot, MusicBotArgs, MusicBotMessage};
 
 pub struct MasterBot {
     config: Arc<MasterConfig>,
-    rng: Arc<Mutex<SmallRng>>,
-    available_names: Arc<Mutex<Vec<usize>>>,
-    available_ids: Arc<Mutex<Vec<usize>>>,
+    music_bots: Arc<Mutex<MusicBots>>,
     teamspeak: Arc<TeamSpeakConnection>,
-    connected_bots: Arc<Mutex<HashMap<String, Arc<MusicBot>>>>,
+}
+
+struct MusicBots {
+    rng: SmallRng,
+    available_names: Vec<usize>,
+    available_ids: Vec<usize>,
+    connected_bots: HashMap<String, Arc<MusicBot>>,
 }
 
 impl MasterBot {
@@ -60,16 +64,22 @@ impl MasterBot {
 
         let name_count = config.names.len();
         let id_count = config.ids.len();
+
+        let music_bots = Arc::new(Mutex::new(MusicBots {
+            rng: SmallRng::from_entropy(),
+            available_names: (0..name_count).collect(),
+            available_ids: (0..id_count).collect(),
+            connected_bots: HashMap::new(),
+        }));
+
         let bot = Arc::new(Self {
             config,
-            rng: Arc::new(Mutex::new(SmallRng::from_entropy())),
-            available_names: Arc::new(Mutex::new((0..name_count).collect())),
-            available_ids: Arc::new(Mutex::new((0..id_count).collect())),
+            music_bots,
             teamspeak: connection,
-            connected_bots: Arc::new(Mutex::new(HashMap::new())),
         });
 
-        bot.teamspeak.set_description("Poke me if you want a music bot!");
+        bot.teamspeak
+            .set_description("Poke me if you want a music bot!");
 
         let cbot = bot.clone();
         let msg_loop = async move {
@@ -83,7 +93,7 @@ impl MasterBot {
         (bot, msg_loop)
     }
 
-    async fn spawn_bot(&self, id: ClientId) {
+    fn build_bot_args_for(&self, id: ClientId) -> Option<MusicBotArgs> {
         let channel = self
             .teamspeak
             .channel_of_user(id)
@@ -97,10 +107,17 @@ impl MasterBot {
                     self.config.master_name
                 ),
             );
-            return;
+            return None;
         }
 
-        for (_, bot) in &*self.connected_bots.lock().expect("Mutex was not poisoned") {
+        let MusicBots {
+            ref mut rng,
+            ref mut available_names,
+            ref mut available_ids,
+            ref connected_bots,
+        } = &mut *self.music_bots.lock().expect("Mutex was not poisoned");
+
+        for (_, bot) in connected_bots {
             if bot.my_channel() == channel {
                 self.teamspeak.send_message_to_user(
                     id,
@@ -110,7 +127,7 @@ impl MasterBot {
                         bot.name()
                     ),
                 );
-                return;
+                return None;
             }
         }
 
@@ -119,61 +136,43 @@ impl MasterBot {
             .channel_path_of_user(id)
             .expect("can find poke sender");
 
-        let (name, name_index) = {
-            let mut available_names = self.available_names.lock().expect("Mutex was not poisoned");
-            let mut rng = self.rng.lock().expect("Mutex was not poisoned");
-            available_names.shuffle(&mut *rng);
-            let name_index = match available_names.pop() {
-                Some(v) => v,
-                None => {
-                    self.teamspeak.send_message_to_user(
-                        id,
-                        "Out of names. Too many bots are already connected!",
-                    );
-                    return;
-                }
-            };
+        available_names.shuffle(rng);
+        let name_index = match available_names.pop() {
+            Some(v) => v,
+            None => {
+                self.teamspeak
+                    .send_message_to_user(id, "Out of names. Too many bots are already connected!");
+                return None;
+            }
+        };
+        let name = self.config.names[name_index].clone();
 
-            (self.config.names[name_index].clone(), name_index)
+        available_ids.shuffle(rng);
+        let id_index = match available_ids.pop() {
+            Some(v) => v,
+            None => {
+                self.teamspeak.send_message_to_user(
+                    id,
+                    "Out of identities. Too many bots are already connected!",
+                );
+                return None;
+            }
         };
 
-        let (id, id_index) = {
-            let mut available_ids = self.available_ids.lock().expect("Mutex was not poisoned");
-            let mut rng = self.rng.lock().expect("Mutex was not poisoned");
-            available_ids.shuffle(&mut *rng);
-            let id_index = match available_ids.pop() {
-                Some(v) => v,
-                None => {
-                    self.teamspeak.send_message_to_user(
-                        id,
-                        "Out of identities. Too many bots are already connected!",
-                    );
-                    return;
-                }
-            };
+        let id = self.config.ids[id_index].clone();
 
-            (self.config.ids[id_index].clone(), id_index)
-        };
-
-        let cconnected_bots = self.connected_bots.clone();
-        let cavailable_names = self.available_names.clone();
-        let cavailable_ids = self.available_ids.clone();
+        let cmusic_bots = self.music_bots.clone();
         let disconnect_cb = Box::new(move |n, name_index, id_index| {
-            let mut bots = cconnected_bots.lock().expect("Mutex was not poisoned");
-            bots.remove(&n);
-            cavailable_names
-                .lock()
-                .expect("Mutex was not poisoned")
-                .push(name_index);
-            cavailable_ids
-                .lock()
-                .expect("Mutex was not poisoned")
-                .push(id_index);
+            let mut music_bots = cmusic_bots.lock().expect("Mutex was not poisoned");
+            music_bots.connected_bots.remove(&n);
+            music_bots.available_names.push(name_index);
+            music_bots.available_ids.push(id_index);
         });
 
         info!("Connecting to {} on {}", channel_path, self.config.address);
-        let bot_args = MusicBotArgs {
-            name: name.clone(),
+
+        Some(MusicBotArgs {
+            name,
             name_index,
             id_index,
             local: self.config.local,
@@ -182,19 +181,25 @@ impl MasterBot {
             channel: channel_path,
             verbose: self.config.verbose,
             disconnect_cb,
-        };
+        })
+    }
 
-        let (app, fut) = MusicBot::new(bot_args).await;
-        tokio::spawn(fut.unit_error().boxed().compat().map(|_| ()));
-        let mut bots = self.connected_bots.lock().expect("Mutex was not poisoned");
-        bots.insert(name, app);
+    async fn spawn_bot_for(&self, id: ClientId) {
+        if let Some(bot_args) = self.build_bot_args_for(id) {
+            let (bot, fut) = MusicBot::new(bot_args).await;
+            tokio::spawn(fut.unit_error().boxed().compat().map(|_| ()));
+            let mut music_bots = self.music_bots.lock().expect("Mutex was not poisoned");
+            music_bots
+                .connected_bots
+                .insert(bot.name().to_string(), bot);
+        }
     }
 
     async fn on_message(&self, message: MusicBotMessage) -> Result<(), AudioPlayerError> {
         if let MusicBotMessage::TextMessage(message) = message {
             if let MessageTarget::Poke(who) = message.target {
                 info!("Poked by {}, creating bot for their channel", who);
-                self.spawn_bot(who).await;
+                self.spawn_bot_for(who).await;
             }
         }
 
