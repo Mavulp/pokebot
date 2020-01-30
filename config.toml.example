@@ -1,5 +1,5 @@
 # Name of the master bot
-name = "PokeBot"
+master_name = "PokeBot"
 # Address of the server to connect to
 address = "localhost"
 # Channel for the master bot
