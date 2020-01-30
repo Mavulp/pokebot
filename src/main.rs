@@ -1,9 +1,10 @@
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::thread;
 
 use futures::future::{FutureExt, TryFutureExt};
-use log::{debug, info};
+use log::{debug, error, info};
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
 use tsclientlib::Identity;
@@ -13,6 +14,7 @@ mod bot;
 mod command;
 mod playlist;
 mod teamspeak;
+mod web_server;
 mod youtube_dl;
 
 use bot::{MasterArgs, MasterBot, MusicBot, MusicBotArgs};
@@ -116,7 +118,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 };
                 MusicBot::new(bot_args).await.1.await;
             } else {
-                MasterBot::new(bot_args).await.1.await;
+                let domain = bot_args.domain.clone();
+                let bind_address = bot_args.bind_address.clone();
+                let (bot, fut) = MasterBot::new(bot_args).await;
+
+                thread::spawn(|| {
+                    let web_args = web_server::WebServerArgs {
+                        domain,
+                        bind_address,
+                        bot,
+                    };
+                    if let Err(e) = web_server::start(web_args) {
+                        error!("Error in web server: {}", e);
+                    }
+                });
+
+                fut.await;
             }
         }
         .unit_error()

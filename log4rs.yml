@@ -23,3 +23,7 @@ root:
 loggers:
   tokio_reactor:
     level: warn
+  actix_web:
+    level: trace
+  actix_server:
+      level: debug

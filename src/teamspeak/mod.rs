@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use futures::compat::Future01CompatExt;
@@ -76,7 +76,7 @@ fn get_message<'a>(event: &Event) -> Option<MusicBotMessage> {
 
 impl TeamSpeakConnection {
     pub async fn new(
-        tx: Arc<Mutex<UnboundedSender<MusicBotMessage>>>,
+        tx: Arc<RwLock<UnboundedSender<MusicBotMessage>>>,
         options: ConnectOptions,
     ) -> Result<TeamSpeakConnection, tsclientlib::Error> {
         let conn = Connection::new(options).compat().await?;
@@ -89,7 +89,7 @@ impl TeamSpeakConnection {
                 if let ConEvents(_conn, events) = e {
                     for event in *events {
                         if let Some(msg) = get_message(event) {
-                            let tx = tx.lock().expect("Mutex was not poisoned");
+                            let tx = tx.read().expect("RwLock was not poisoned");
                             // Ignore the result because the receiver might get dropped first.
                             let _ = tx.send(msg);
                         }

@@ -1,6 +1,6 @@
 use std::future::Future;
 use std::io::BufRead;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::thread;
 
 use humantime;
@@ -71,8 +71,8 @@ pub struct MusicBot {
     name: String,
     player: Arc<AudioPlayer>,
     teamspeak: Option<Arc<TeamSpeakConnection>>,
-    playlist: Arc<Mutex<Playlist>>,
-    state: Arc<Mutex<State>>,
+    playlist: Arc<RwLock<Playlist>>,
+    state: Arc<RwLock<State>>,
 }
 
 pub struct MusicBotArgs {
@@ -90,7 +90,7 @@ pub struct MusicBotArgs {
 impl MusicBot {
     pub async fn new(args: MusicBotArgs) -> (Arc<Self>, impl Future) {
         let (tx, mut rx) = tokio02::sync::mpsc::unbounded_channel();
-        let tx = Arc::new(Mutex::new(tx));
+        let tx = Arc::new(RwLock::new(tx));
         let (player, connection) = if args.local {
             info!("Starting in CLI mode");
             let audio_player = AudioPlayer::new(tx.clone(), None).unwrap();
@@ -127,7 +127,7 @@ impl MusicBot {
 
         player.set_volume(0.5).unwrap();
         let player = Arc::new(player);
-        let playlist = Arc::new(Mutex::new(Playlist::new()));
+        let playlist = Arc::new(RwLock::new(Playlist::new()));
 
         spawn_gstreamer_thread(player.clone(), tx.clone());
 
@@ -140,7 +140,7 @@ impl MusicBot {
             player,
             teamspeak: connection,
             playlist,
-            state: Arc::new(Mutex::new(State::Stopped)),
+            state: Arc::new(RwLock::new(State::Stopped)),
         });
 
         let cbot = bot.clone();
@@ -190,7 +190,7 @@ impl MusicBot {
             Ok(metadata) => {
                 info!("Found audio url: {}", metadata.url);
 
-                let mut playlist = self.playlist.lock().expect("Mutex was not poisoned");
+                let mut playlist = self.playlist.write().expect("RwLock was not poisoned");
                 playlist.push(metadata.clone());
 
                 if !self.player.is_started() {
@@ -269,7 +269,7 @@ impl MusicBot {
     async fn on_command(&self, command: Command) -> Result<(), AudioPlayerError> {
         match command {
             Command::Play => {
-                let playlist = self.playlist.lock().expect("Mutex was not poisoned");
+                let playlist = self.playlist.read().expect("RwLock was not poisoned");
 
                 if !self.player.is_started() {
                     if !playlist.is_empty() {
@@ -303,7 +303,7 @@ impl MusicBot {
                 }
             }
             Command::Next => {
-                let playlist = self.playlist.lock().expect("Mutex was not poisoned");
+                let playlist = self.playlist.read().expect("RwLock was not poisoned");
                 if !playlist.is_empty() {
                     info!("Skipping to next track");
                     self.player.stop_current()?;
@@ -314,8 +314,8 @@ impl MusicBot {
             }
             Command::Clear => {
                 self.playlist
-                    .lock()
-                    .expect("Mutex was not poisoned")
+                    .write()
+                    .expect("RwLock was not poisoned")
                     .clear();
             }
             Command::Volume { percent: volume } => {
@@ -331,7 +331,7 @@ impl MusicBot {
     }
 
     fn on_state(&self, state: State) -> Result<(), AudioPlayerError> {
-        let mut current_state = self.state.lock().unwrap();
+        let mut current_state = self.state.write().unwrap();
         if *current_state != state {
             match state {
                 State::Playing => {
@@ -345,7 +345,11 @@ impl MusicBot {
                     self.set_description("");
                 }
                 State::EndOfStream => {
-                    let next_track = self.playlist.lock().expect("Mutex was not poisoned").pop();
+                    let next_track = self
+                        .playlist
+                        .write()
+                        .expect("RwLock was not poisoned")
+                        .pop();
                     if let Some(request) = next_track {
                         info!("Advancing playlist");
 
@@ -401,7 +405,7 @@ impl MusicBot {
     }
 }
 
-fn spawn_stdin_reader(tx: Arc<Mutex<UnboundedSender<MusicBotMessage>>>) {
+fn spawn_stdin_reader(tx: Arc<RwLock<UnboundedSender<MusicBotMessage>>>) {
     debug!("Spawning stdin reader thread");
     thread::Builder::new()
         .name(String::from("stdin reader"))
@@ -421,7 +425,7 @@ fn spawn_stdin_reader(tx: Arc<Mutex<UnboundedSender<MusicBotMessage>>>) {
                     text: line,
                 });
 
-                let tx = tx.lock().unwrap();
+                let tx = tx.read().unwrap();
                 tx.send(message).unwrap();
             }
         })
@@ -430,7 +434,7 @@ fn spawn_stdin_reader(tx: Arc<Mutex<UnboundedSender<MusicBotMessage>>>) {
 
 fn spawn_gstreamer_thread(
     player: Arc<AudioPlayer>,
-    tx: Arc<Mutex<UnboundedSender<MusicBotMessage>>>,
+    tx: Arc<RwLock<UnboundedSender<MusicBotMessage>>>,
 ) {
     thread::Builder::new()
         .name(String::from("gstreamer polling"))
@@ -439,7 +443,7 @@ fn spawn_gstreamer_thread(
                 break;
             }
 
-            tx.lock()
+            tx.read()
                 .unwrap()
                 .send(MusicBotMessage::StateChange(State::EndOfStream))
                 .unwrap();

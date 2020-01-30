@@ -10,7 +10,7 @@ use gstreamer_audio::{StreamVolume, StreamVolumeFormat};
 use crate::bot::{MusicBotMessage, State};
 use glib::BoolError;
 use log::{debug, error, info, warn};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use tokio02::sync::mpsc::UnboundedSender;
 
 static GST_INIT: Once = Once::new();
@@ -34,7 +34,7 @@ pub struct AudioPlayer {
     http_src: gst::Element,
 
     volume: gst::Element,
-    sender: Arc<Mutex<UnboundedSender<MusicBotMessage>>>,
+    sender: Arc<RwLock<UnboundedSender<MusicBotMessage>>>,
 }
 
 fn make_element(factoryname: &str, display_name: &str) -> Result<gst::Element, AudioPlayerError> {
@@ -83,7 +83,7 @@ fn add_decode_bin_new_pad_callback(
 
 impl AudioPlayer {
     pub fn new(
-        sender: Arc<Mutex<UnboundedSender<MusicBotMessage>>>,
+        sender: Arc<RwLock<UnboundedSender<MusicBotMessage>>>,
         callback: Option<Box<dyn FnMut(&[u8]) + Send>>,
     ) -> Result<Self, AudioPlayerError> {
         GST_INIT.call_once(|| gst::init().unwrap());
@@ -280,13 +280,13 @@ impl AudioPlayer {
             warn!("Failed to send \"quit\" app event: {}", e);
         }
 
-        let sender = self.sender.lock().unwrap();
+        let sender = self.sender.read().unwrap();
         sender.send(MusicBotMessage::Quit(reason)).unwrap();
     }
 
     fn send_state(&self, state: State) {
         info!("Sending state {:?} to application", state);
-        let sender = self.sender.lock().unwrap();
+        let sender = self.sender.read().unwrap();
         sender.send(MusicBotMessage::StateChange(state)).unwrap();
     }
 

@@ -1,4 +1,4 @@
-use std::fmt::{Formatter, Display, Error};
+use std::fmt::{Display, Error, Formatter};
 
 #[allow(dead_code)]
 pub enum BbCode<'a> {
@@ -14,7 +14,9 @@ impl<'a> Display for BbCode<'a> {
             BbCode::Bold(text) => fmt.write_fmt(format_args!("[B]{}[/B]", text))?,
             BbCode::Italic(text) => fmt.write_fmt(format_args!("[I]{}[/I]", text))?,
             BbCode::Underline(text) => fmt.write_fmt(format_args!("[U]{}[/U]", text))?,
-            BbCode::Link(text, url) => fmt.write_fmt(format_args!("[URL={}]{}[/URL]", url, text))?,
+            BbCode::Link(text, url) => {
+                fmt.write_fmt(format_args!("[URL={}]{}[/URL]", url, text))?
+            }
         };
 
         Ok(())

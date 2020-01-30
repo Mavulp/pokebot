@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use futures::future::{FutureExt, TryFutureExt};
 use futures01::future::Future as Future01;
 use log::info;
 use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 use serde::{Deserialize, Serialize};
+use tokio02::sync::mpsc::UnboundedSender;
 use tsclientlib::{ClientId, ConnectOptions, Identity, MessageTarget};
 
 use crate::audio_player::AudioPlayerError;
@@ -18,8 +19,9 @@ use crate::bot::{MusicBot, MusicBotArgs, MusicBotMessage};
 
 pub struct MasterBot {
     config: Arc<MasterConfig>,
-    music_bots: Arc<Mutex<MusicBots>>,
+    music_bots: Arc<RwLock<MusicBots>>,
     teamspeak: Arc<TeamSpeakConnection>,
+    sender: Arc<RwLock<UnboundedSender<MusicBotMessage>>>,
 }
 
 struct MusicBots {
@@ -32,7 +34,7 @@ struct MusicBots {
 impl MasterBot {
     pub async fn new(args: MasterArgs) -> (Arc<Self>, impl Future) {
         let (tx, mut rx) = tokio02::sync::mpsc::unbounded_channel();
-        let tx = Arc::new(Mutex::new(tx));
+        let tx = Arc::new(RwLock::new(tx));
         info!("Starting in TeamSpeak mode");
 
         let mut con_config = ConnectOptions::new(args.address.clone())
@@ -65,7 +67,7 @@ impl MasterBot {
         let name_count = config.names.len();
         let id_count = config.ids.len();
 
-        let music_bots = Arc::new(Mutex::new(MusicBots {
+        let music_bots = Arc::new(RwLock::new(MusicBots {
             rng: SmallRng::from_entropy(),
             available_names: (0..name_count).collect(),
             available_ids: (0..id_count).collect(),
@@ -76,6 +78,7 @@ impl MasterBot {
             config,
             music_bots,
             teamspeak: connection,
+            sender: tx.clone(),
         });
 
         bot.teamspeak
@@ -83,8 +86,12 @@ impl MasterBot {
 
         let cbot = bot.clone();
         let msg_loop = async move {
-            loop {
+            'outer: loop {
                 while let Some(msg) = rx.recv().await {
+                    if let MusicBotMessage::Quit(reason) = msg {
+                        cbot.teamspeak.disconnect(&reason);
+                        break 'outer;
+                    }
                     cbot.on_message(msg).await.unwrap();
                 }
             }
@@ -115,7 +122,7 @@ impl MasterBot {
             ref mut available_names,
             ref mut available_ids,
             ref connected_bots,
-        } = &mut *self.music_bots.lock().expect("Mutex was not poisoned");
+        } = &mut *self.music_bots.write().expect("RwLock was not poisoned");
 
         for (_, bot) in connected_bots {
             if bot.my_channel() == channel {
@@ -163,7 +170,7 @@ impl MasterBot {
 
         let cmusic_bots = self.music_bots.clone();
         let disconnect_cb = Box::new(move |n, name_index, id_index| {
-            let mut music_bots = cmusic_bots.lock().expect("Mutex was not poisoned");
+            let mut music_bots = cmusic_bots.write().expect("RwLock was not poisoned");
             music_bots.connected_bots.remove(&n);
             music_bots.available_names.push(name_index);
             music_bots.available_ids.push(id_index);
@@ -188,7 +195,7 @@ impl MasterBot {
         if let Some(bot_args) = self.build_bot_args_for(id) {
             let (bot, fut) = MusicBot::new(bot_args).await;
             tokio::spawn(fut.unit_error().boxed().compat().map(|_| ()));
-            let mut music_bots = self.music_bots.lock().expect("Mutex was not poisoned");
+            let mut music_bots = self.music_bots.write().expect("RwLock was not poisoned");
             music_bots
                 .connected_bots
                 .insert(bot.name().to_string(), bot);
@@ -204,6 +211,25 @@ impl MasterBot {
         }
 
         Ok(())
+    }
+
+    pub fn names(&self) -> Vec<String> {
+        let music_bots = self.music_bots.read().unwrap();
+
+        music_bots
+            .connected_bots
+            .iter()
+            .map(|(_, b)| b.name().to_owned())
+            .collect()
+    }
+
+    pub fn quit(&self, reason: String) {
+        let music_bots = self.music_bots.read().unwrap();
+        for (_, bot) in &music_bots.connected_bots {
+            bot.quit(reason.clone())
+        }
+        let sender = self.sender.read().unwrap();
+        sender.send(MusicBotMessage::Quit(reason)).unwrap();
     }
 }
 
