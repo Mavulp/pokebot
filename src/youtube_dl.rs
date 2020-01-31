@@ -9,7 +9,7 @@ use log::debug;
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AudioMetadata {
     pub url: String,
-    pub title: Option<String>,
+    pub title: String,
 }
 
 pub async fn get_audio_download_url(uri: String) -> Result<AudioMetadata, String> {
