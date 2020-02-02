@@ -13,6 +13,8 @@ use log::{debug, error, info, warn};
 use std::sync::{Arc, RwLock};
 use tokio02::sync::mpsc::UnboundedSender;
 
+use crate::youtube_dl::AudioMetadata;
+
 static GST_INIT: Once = Once::new();
 
 #[derive(Copy, Clone, Debug)]
@@ -33,8 +35,10 @@ pub struct AudioPlayer {
     bus: gst::Bus,
     http_src: gst::Element,
 
+    volume_f64: RwLock<f64>,
     volume: gst::Element,
     sender: Arc<RwLock<UnboundedSender<MusicBotMessage>>>,
+    currently_playing: RwLock<Option<AudioMetadata>>,
 }
 
 fn make_element(factoryname: &str, display_name: &str) -> Result<gst::Element, AudioPlayerError> {
@@ -111,8 +115,10 @@ impl AudioPlayer {
             bus,
             http_src,
 
+            volume_f64: RwLock::new(0.0),
             volume,
             sender,
+            currently_playing: RwLock::new(None),
         })
     }
 
@@ -173,7 +179,16 @@ impl AudioPlayer {
         Ok((audio_bin, volume, ghost_pad))
     }
 
-    pub fn set_source_url(&self, location: String) -> Result<(), AudioPlayerError> {
+    pub fn set_metadata(&self, data: AudioMetadata) -> Result<(), AudioPlayerError> {
+        self.set_source_url(data.url.clone())?;
+
+        let mut currently_playing = self.currently_playing.write().unwrap();
+        *currently_playing = Some(data);
+
+        Ok(())
+    }
+
+    fn set_source_url(&self, location: String) -> Result<(), AudioPlayerError> {
         info!("Setting location URI: {}", location);
         self.http_src.set_property("location", &location)?;
 
@@ -181,6 +196,7 @@ impl AudioPlayer {
     }
 
     pub fn set_volume(&self, volume: f64) -> Result<(), AudioPlayerError> {
+        *self.volume_f64.write().unwrap() = volume;
         let db = 50.0 * volume.log10();
         info!("Setting volume: {} -> {} dB", volume, db);
 
@@ -203,8 +219,19 @@ impl AudioPlayer {
         }
     }
 
+    pub fn volume(&self) -> f64 {
+        *self.volume_f64.read().unwrap()
+    }
+
+    pub fn currently_playing(&self) -> Option<AudioMetadata> {
+        self.currently_playing.read().unwrap().clone()
+    }
+
     pub fn reset(&self) -> Result<(), AudioPlayerError> {
         info!("Setting pipeline state to null");
+
+        let mut currently_playing = self.currently_playing.write().unwrap();
+        *currently_playing = None;
 
         self.pipeline.set_state(gst::State::Null)?;
 

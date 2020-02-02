@@ -44,12 +44,24 @@ fn parse_seek(mut amount: &str) -> Result<Seek, ()> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum State {
     Playing,
     Paused,
     Stopped,
     EndOfStream,
+}
+
+impl std::fmt::Display for State {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match self {
+            State::Playing => write!(fmt, "Playing"),
+            State::Paused => write!(fmt, "Paused"),
+            State::Stopped | State::EndOfStream => write!(fmt, "Stopped"),
+        }?;
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -176,7 +188,7 @@ impl MusicBot {
         self.send_message(&format!("Playing {}", ts::underline(&metadata.title)));
         self.set_description(&format!("Currently playing '{}'", metadata.title));
         self.player.reset().unwrap();
-        self.player.set_source_url(metadata.url).unwrap();
+        self.player.set_metadata(metadata).unwrap();
         self.player.play().unwrap();
     }
 
@@ -209,6 +221,22 @@ impl MusicBot {
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn state(&self) -> State {
+        *self.state.read().expect("RwLock was not poisoned")
+    }
+
+    pub fn volume(&self) -> f64 {
+        self.player.volume()
+    }
+
+    pub fn currently_playing(&self) -> Option<AudioMetadata> {
+        self.player.currently_playing()
+    }
+
+    pub fn playlist_to_vec(&self) -> Vec<AudioMetadata> {
+        self.playlist.read().unwrap().to_vec()
     }
 
     pub fn my_channel(&self) -> ChannelId {

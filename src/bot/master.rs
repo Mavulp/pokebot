@@ -213,14 +213,24 @@ impl MasterBot {
         Ok(())
     }
 
-    pub fn names(&self) -> Vec<String> {
+    pub fn bot_datas(&self) -> Vec<crate::web_server::BotData> {
         let music_bots = self.music_bots.read().unwrap();
 
-        music_bots
-            .connected_bots
-            .iter()
-            .map(|(_, b)| b.name().to_owned())
-            .collect()
+        let len = music_bots.connected_bots.len();
+        let mut result = Vec::with_capacity(len);
+        for (name, bot) in &music_bots.connected_bots {
+            let bot_data = crate::web_server::BotData {
+                name: name.clone(),
+                state: bot.state(),
+                volume: bot.volume(),
+                currently_playing: bot.currently_playing(),
+                playlist: bot.playlist_to_vec(),
+            };
+
+            result.push(bot_data);
+        }
+
+        result
     }
 
     pub fn quit(&self, reason: String) {

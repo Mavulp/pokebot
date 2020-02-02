@@ -28,6 +28,16 @@ impl Playlist {
         res
     }
 
+    pub fn to_vec(&self) -> Vec<AudioMetadata> {
+        let (a, b) = self.data.as_slices();
+
+        let mut res = a.to_vec();
+        res.extend_from_slice(b);
+        res.reverse();
+
+        res
+    }
+
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }

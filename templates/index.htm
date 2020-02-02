@@ -1,0 +1,27 @@
+{% extends "base.htm" %}
+
+{% block title %}Overview{% endblock %}
+
+{% block content %}
+<h1>Bots</h1>
+<ul>
+  {% for bot in bots %}
+    <h2>{{ bot.name }}</h1>
+    <div>State: {{ bot.state }}</div>
+    <div>Volume: {{ bot.volume * 100.0 }}%</div>
+    {% match bot.currently_playing %}
+      {% when Some with (current) %}
+        <span>Currently playing:</span>
+        {% let item = current %}
+        {% include "song.htm" %}
+      {% when None %}
+    {% endmatch %}
+
+    {% for item in bot.playlist %}
+      <li>
+        {% include "song.htm" %}
+      </li>
+    {% endfor %}
+  {% endfor %}
+</ul>
+{% endblock %}
