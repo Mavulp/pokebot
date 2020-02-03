@@ -213,6 +213,20 @@ impl MasterBot {
         Ok(())
     }
 
+    pub fn bot_data(&self, name: String) -> Option<crate::web_server::BotData> {
+        let music_bots = self.music_bots.read().unwrap();
+
+        let bot = music_bots.connected_bots.get(&name)?;
+
+        Some(crate::web_server::BotData {
+            name: name,
+            state: bot.state(),
+            volume: bot.volume(),
+            currently_playing: bot.currently_playing(),
+            playlist: bot.playlist_to_vec(),
+        })
+    }
+
     pub fn bot_datas(&self) -> Vec<crate::web_server::BotData> {
         let music_bots = self.music_bots.read().unwrap();
 

@@ -5,6 +5,7 @@ use std::thread;
 
 use humantime;
 use log::{debug, info};
+use serde::Serialize;
 use structopt::StructOpt;
 use tokio02::sync::mpsc::UnboundedSender;
 use tsclientlib::{data, ChannelId, ClientId, ConnectOptions, Identity, Invoker, MessageTarget};
@@ -44,7 +45,7 @@ fn parse_seek(mut amount: &str) -> Result<Seek, ()> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
 pub enum State {
     Playing,
     Paused,

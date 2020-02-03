@@ -2361,6 +2361,7 @@ dependencies = [
  "actix-web",
  "askama",
  "byte-slice-cast",
+ "derive_more 0.99.2",
  "futures 0.1.29",
  "futures-preview",
  "futures-util",
