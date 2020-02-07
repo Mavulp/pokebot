@@ -369,40 +369,46 @@ impl MusicBot {
 
 fn spawn_stdin_reader(tx: Arc<Mutex<UnboundedSender<MusicBotMessage>>>) {
     debug!("Spawning stdin reader thread");
-    thread::spawn(move || {
-        let stdin = ::std::io::stdin();
-        let lock = stdin.lock();
-        for line in lock.lines() {
-            let line = line.unwrap();
+    thread::Builder::new()
+        .name(String::from("stdin reader"))
+        .spawn(move || {
+            let stdin = ::std::io::stdin();
+            let lock = stdin.lock();
+            for line in lock.lines() {
+                let line = line.unwrap();
 
-            let message = MusicBotMessage::TextMessage(Message {
-                target: MessageTarget::Channel,
-                invoker: Invoker {
-                    name: String::from("stdin"),
-                    id: ClientId(0),
-                    uid: None,
-                },
-                text: line,
-            });
+                let message = MusicBotMessage::TextMessage(Message {
+                    target: MessageTarget::Channel,
+                    invoker: Invoker {
+                        name: String::from("stdin"),
+                        id: ClientId(0),
+                        uid: None,
+                    },
+                    text: line,
+                });
 
-            let tx = tx.lock().unwrap();
-            tx.send(message).unwrap();
-        }
-    });
+                let tx = tx.lock().unwrap();
+                tx.send(message).unwrap();
+            }
+        })
+        .expect("Failed to spawn stdin reader thread");
 }
 
 fn spawn_gstreamer_thread(
     player: Arc<AudioPlayer>,
     tx: Arc<Mutex<UnboundedSender<MusicBotMessage>>>,
 ) {
-    thread::spawn(move || loop {
-        if player.poll() == PollResult::Quit {
-            break;
-        }
+    thread::Builder::new()
+        .name(String::from("gstreamer polling"))
+        .spawn(move || loop {
+            if player.poll() == PollResult::Quit {
+                break;
+            }
 
-        tx.lock()
-            .unwrap()
-            .send(MusicBotMessage::StateChange(State::EndOfStream))
-            .unwrap();
-    });
+            tx.lock()
+                .unwrap()
+                .send(MusicBotMessage::StateChange(State::EndOfStream))
+                .unwrap();
+        })
+        .expect("Failed to spawn gstreamer thread");
 }
