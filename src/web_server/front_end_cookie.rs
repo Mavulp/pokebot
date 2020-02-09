@@ -10,7 +10,7 @@ use serde::Deserialize;
 #[derive(PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FrontEnd {
-    Lazy,
+    Default,
     Tmtu,
 }
 
@@ -19,7 +19,7 @@ impl FrontEnd {
 
     fn cookie(&self) -> String {
         let name = match self {
-            FrontEnd::Lazy => "lazy",
+            FrontEnd::Default => "default",
             FrontEnd::Tmtu => "tmtu",
         };
 
@@ -39,7 +39,7 @@ impl FromRequest for FrontEnd {
                     let mut split = c.split('=');
                     if Some(Self::COOKIE_NAME) == split.next() {
                         match split.next() {
-                            Some("lazy") => return ok(FrontEnd::Lazy),
+                            Some("default") => return ok(FrontEnd::Default),
                             Some("tmtu") => return ok(FrontEnd::Tmtu),
                             _ => (),
                         }
@@ -48,7 +48,7 @@ impl FromRequest for FrontEnd {
             }
         }
 
-        ok(FrontEnd::Lazy)
+        ok(FrontEnd::Default)
     }
 }
 

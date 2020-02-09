@@ -215,7 +215,6 @@ impl MasterBot {
 
     pub fn bot_data(&self, name: String) -> Option<crate::web_server::BotData> {
         let music_bots = self.music_bots.read().unwrap();
-
         let bot = music_bots.connected_bots.get(&name)?;
 
         Some(crate::web_server::BotData {

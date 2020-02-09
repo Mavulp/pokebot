@@ -75,9 +75,9 @@
                 {% endmatch %}
               {% for name in bot_names %}
                 {% if name.clone() == bot_name %}
-                  <li><a href="/tmtu/{{ name }}" class="botname selected">{{ name }}</a></li>
+                  <li><a href="/bot/{{ name }}" class="botname selected">{{ name }}</a></li>
                 {% else %}
-                  <li><a href="/tmtu/{{ name }}" class="botname">{{ name }}</a></li>
+                  <li><a href="/bot/{{ name }}" class="botname">{{ name }}</a></li>
                 {% endif %}
               {% endfor %}
             </ol>

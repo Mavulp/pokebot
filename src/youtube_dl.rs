@@ -15,20 +15,9 @@ pub struct AudioMetadata {
     pub title: String,
     pub thumbnail: Option<String>,
     #[serde(default, deserialize_with = "duration_deserialize")]
-    #[serde(serialize_with = "duration_serialize")]
     pub duration: Option<Duration>,
     #[serde(skip)]
     pub added_by: String,
-}
-
-fn duration_serialize<S>(d: &Option<Duration>, s: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    match d {
-        Some(d) => s.serialize_some(&d.as_secs_f64()),
-        None => s.serialize_none(),
-    }
 }
 
 fn duration_deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
