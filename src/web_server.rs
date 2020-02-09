@@ -5,6 +5,8 @@ use actix::{Addr, SyncArbiter};
 use actix_web::{
     get, http::header, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder,
 };
+use askama::actix_web::TemplateIntoResponse;
+use askama::Template;
 use serde::{Deserialize, Serialize};
 
 use crate::bot::MasterBot;
@@ -41,6 +43,7 @@ pub async fn start(args: WebServerArgs) -> std::io::Result<()> {
                     .service(api::get_bot_list)
                     .service(api::get_bot),
             )
+            .service(web::scope("/docs").service(get_api_docs))
             .service(actix_files::Files::new("/static", "static/"))
     })
     .bind(args.bind_address)?
@@ -91,6 +94,15 @@ async fn get_bot(
         FrontEnd::Tmtu => tmtu::get_bot(bot, name.into_inner()).await,
         FrontEnd::Default => Ok(HttpResponse::Found().header(header::LOCATION, "/").finish()),
     }
+}
+
+#[derive(Template)]
+#[template(path = "docs/api.htm")]
+struct ApiDocsTemplate;
+
+#[get("/api")]
+async fn get_api_docs() -> impl Responder {
+    ApiDocsTemplate.into_response()
 }
 
 mod filters {
