@@ -108,6 +108,12 @@ impl AudioPlayer {
 
         pipeline.add(&audio_bin)?;
 
+        // The documentation says that we have to make sure to handle
+        // all messages if auto flushing is deactivated.
+        // I hope our way of reading messages is good enough.
+        //
+        // https://gstreamer.freedesktop.org/documentation/gstreamer/gstpipeline.html#gst_pipeline_set_auto_flush_bus
+        pipeline.set_auto_flush_bus(false);
         pipeline.set_state(gst::State::Ready)?;
 
         Ok(AudioPlayer {
@@ -306,11 +312,11 @@ impl AudioPlayer {
     pub fn quit(&self, reason: String) {
         info!("Quitting audio player");
 
-        if let Err(e) = self
+        if let Err(_) = self
             .bus
             .post(&gst::Message::new_application(gst::Structure::new_empty("quit")).build())
         {
-            warn!("Failed to send \"quit\" app event: {}", e);
+            warn!("Tried to send \"quit\" app event on flushing bus.");
         }
 
         let sender = self.sender.read().unwrap();
@@ -395,7 +401,7 @@ impl AudioPlayer {
                         }
                     }
                     _ => {
-                        //debug!("{:?}", msg)
+                        //debug!("Unhandled message on bus: {:?}", msg)
                     }
                 };
             }
