@@ -1142,6 +1142,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "humantime"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9b6c53306532d3c8e8087b44e6580e10db51a023cf9b433cea2ac38066b92da"
+
+[[package]]
 name = "hyper"
 version = "0.12.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1334,7 +1340,7 @@ dependencies = [
  "chrono",
  "flate2",
  "fnv",
- "humantime",
+ "humantime 1.3.0",
  "libc",
  "log",
  "log-mdc",
@@ -1784,6 +1790,7 @@ dependencies = [
  "gstreamer",
  "gstreamer-app",
  "gstreamer-audio",
+ "humantime 2.0.0",
  "log",
  "log4rs",
  "rand 0.7.3",

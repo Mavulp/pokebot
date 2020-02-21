@@ -9,7 +9,8 @@ use structopt::StructOpt;
                             DisableHelpFlags,
                             DisableVersion,
                             ColorNever,
-                            NoBinaryName]",)
+                            NoBinaryName,
+                            AllowLeadingHyphen]",)
 )]
 pub enum Command {
     /// Adds url to playlist
@@ -18,6 +19,8 @@ pub enum Command {
     Play,
     /// Pauses audio playback
     Pause,
+    /// Seeks by a specified amount
+    Seek { amount: String },
     /// Stops audio playback
     Stop,
     /// Switches to the next queue entry
