@@ -1,4 +1,5 @@
 use std::sync::Once;
+use std::time::Duration;
 
 use gst::prelude::*;
 use gst::GhostPad;
@@ -13,6 +14,13 @@ use std::sync::{Arc, Mutex};
 use tokio02::sync::mpsc::UnboundedSender;
 
 static GST_INIT: Once = Once::new();
+
+#[derive(Copy, Clone, Debug)]
+pub enum Seek {
+    Positive(Duration),
+    Negative(Duration),
+    Absolute(Duration),
+}
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum PollResult {
@@ -219,6 +227,41 @@ impl AudioPlayer {
         Ok(())
     }
 
+    pub fn seek(&self, seek: Seek) -> Result<humantime::FormattedDuration, AudioPlayerError> {
+        let base = match seek {
+            Seek::Positive(_) | Seek::Negative(_) => {
+                let pos = self
+                    .pipeline
+                    .query_position::<gst::ClockTime>()
+                    .ok_or(AudioPlayerError::SeekError)?;
+                Duration::from_nanos(pos.nanoseconds().ok_or(AudioPlayerError::SeekError)?)
+            }
+            _ => Duration::new(0, 0),
+        };
+
+        let absolute = match seek {
+            Seek::Positive(duration) => base + duration,
+            Seek::Negative(duration) => {
+                if duration > base {
+                    Duration::new(0, 0)
+                } else {
+                    base - duration
+                }
+            }
+            Seek::Absolute(duration) => duration,
+        };
+
+        let time = humantime::format_duration(absolute);
+        info!("Seeking to {}", time);
+
+        self.pipeline.seek_simple(
+            gst::SeekFlags::FLUSH,
+            gst::ClockTime::from_nseconds(absolute.as_nanos() as _),
+        )?;
+
+        Ok(time)
+    }
+
     pub fn stop_current(&self) -> Result<(), AudioPlayerError> {
         info!("Stopping pipeline, sending EOS");
 
@@ -334,6 +377,7 @@ impl AudioPlayer {
 pub enum AudioPlayerError {
     GStreamerError(glib::error::BoolError),
     StateChangeFailed,
+    SeekError,
 }
 
 impl From<glib::error::BoolError> for AudioPlayerError {

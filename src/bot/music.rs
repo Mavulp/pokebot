@@ -3,12 +3,13 @@ use std::io::BufRead;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use humantime;
 use log::{debug, info};
 use structopt::StructOpt;
 use tokio02::sync::mpsc::UnboundedSender;
 use tsclientlib::{data, ChannelId, ClientId, ConnectOptions, Identity, Invoker, MessageTarget};
 
-use crate::audio_player::{AudioPlayer, AudioPlayerError, PollResult};
+use crate::audio_player::{AudioPlayer, AudioPlayerError, PollResult, Seek};
 use crate::command::Command;
 use crate::playlist::Playlist;
 use crate::teamspeak::TeamSpeakConnection;
@@ -19,6 +20,27 @@ pub struct Message {
     pub target: MessageTarget,
     pub invoker: Invoker,
     pub text: String,
+}
+
+fn parse_seek(mut amount: &str) -> Result<Seek, ()> {
+    let sign = match amount.chars().next() {
+        Some('+') => 1,
+        Some('-') => -1,
+        _ => 0,
+    };
+    let is_relative = sign != 0;
+
+    if is_relative {
+        amount = &amount[1..];
+    }
+
+    let duration = humantime::parse_duration(amount).map_err(|_| ())?;
+
+    match sign {
+        1 => Ok(Seek::Positive(duration)),
+        -1 => Ok(Seek::Negative(duration)),
+        _ => Ok(Seek::Absolute(duration)),
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -267,6 +289,17 @@ impl MusicBot {
             }
             Command::Stop => {
                 self.player.reset()?;
+            }
+            Command::Seek { amount } => {
+                if let Ok(seek) = parse_seek(&amount) {
+                    if let Ok(time) = self.player.seek(seek) {
+                        self.send_message(&format!("New position: {}", time));
+                    } else {
+                        self.send_message("Failed to seek");
+                    }
+                } else {
+                    info!("Failed to parse seeking command");
+                }
             }
             Command::Next => {
                 let playlist = self.playlist.lock().expect("Mutex was not poisoned");
