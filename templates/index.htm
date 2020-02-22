@@ -4,6 +4,11 @@
 
 {% block content %}
 <h1>Bots</h1>
+<form action="/front-end" method="POST">
+  <input type="hidden" placeholder="Enter front end" name="front-end" value="tmtu">
+  <button type="submit">tmtu-mode</button>
+</form>
+
 <ul>
   {% for bot in bots %}
     <h2>{{ bot.name }}</h1>

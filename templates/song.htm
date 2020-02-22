@@ -1,10 +1,7 @@
 <a href="{{ item.webpage_url }}">{{ item.title }}</a>
-{% match item.duration %}
-  {% when Some with (duration) %}
-    {% let secs = duration.as_secs() %}
-    {% let mins = secs / 60 %}
-    {% let submin_secs = secs % 60 %}
-    <span>({{ "{:02}"|format(mins) }}:{{ "{:02}"|format(submin_secs) }})</span>
+<span>({{ item.duration|fmt_duration }})</span>
+{% match item.thumbnail %}
+  {% when Some with (thumbnail) %}
+    <img src="{{ thumbnail }}" height="128">
   {% when None %}
-    <span>(--:--)</span>
 {% endmatch %}

@@ -2,6 +2,7 @@ use std::future::Future;
 use std::io::BufRead;
 use std::sync::{Arc, RwLock};
 use std::thread;
+use std::time::Duration;
 
 use humantime;
 use log::{debug, info};
@@ -193,9 +194,10 @@ impl MusicBot {
         self.player.play().unwrap();
     }
 
-    pub async fn add_audio(&self, url: String) {
+    pub async fn add_audio(&self, url: String, user: String) {
         match crate::youtube_dl::get_audio_download_url(url).await {
-            Ok(metadata) => {
+            Ok(mut metadata) => {
+                metadata.added_by = user;
                 info!("Found audio url: {}", metadata.url);
 
                 let mut playlist = self.playlist.write().expect("RwLock was not poisoned");
@@ -230,6 +232,10 @@ impl MusicBot {
 
     pub fn volume(&self) -> f64 {
         self.player.volume()
+    }
+
+    pub fn position(&self) -> Option<Duration> {
+        self.player.position()
     }
 
     pub fn currently_playing(&self) -> Option<AudioMetadata> {
@@ -278,7 +284,7 @@ impl MusicBot {
             let tokens = msg[1..].split_whitespace().collect::<Vec<_>>();
 
             match Command::from_iter_safe(&tokens) {
-                Ok(args) => self.on_command(args).await?,
+                Ok(args) => self.on_command(args, message.invoker).await?,
                 Err(e) if e.kind == structopt::clap::ErrorKind::HelpDisplayed => {
                     self.send_message(&format!("\n{}", e.message));
                 }
@@ -289,7 +295,7 @@ impl MusicBot {
         Ok(())
     }
 
-    async fn on_command(&self, command: Command) -> Result<(), AudioPlayerError> {
+    async fn on_command(&self, command: Command, invoker: Invoker) -> Result<(), AudioPlayerError> {
         match command {
             Command::Play => {
                 let playlist = self.playlist.read().expect("RwLock was not poisoned");
@@ -306,7 +312,7 @@ impl MusicBot {
                 // strip bbcode tags from url
                 let url = url.replace("[URL]", "").replace("[/URL]", "");
 
-                self.add_audio(url.to_string()).await;
+                self.add_audio(url.to_string(), invoker.name).await;
             }
             Command::Pause => {
                 self.player.pause()?;

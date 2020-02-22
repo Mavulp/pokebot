@@ -1,16 +1,21 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix::{Actor, Addr, Handler, Message, SyncArbiter, SyncContext};
 use actix_web::{
-    get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder, ResponseError,
+    get, http::header, middleware::Logger, post, web, App, Error, HttpResponse, HttpServer,
+    Responder, ResponseError,
 };
 use askama::actix_web::TemplateIntoResponse;
 use askama::Template;
 use derive_more::Display;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::bot::MasterBot;
 use crate::youtube_dl::AudioMetadata;
+
+mod front_end_cookie;
+use front_end_cookie::FrontEnd;
 
 pub struct WebServerArgs {
     pub domain: String,
@@ -28,6 +33,8 @@ pub async fn start(args: WebServerArgs) -> std::io::Result<()> {
             .data(bot_addr.clone())
             .wrap(Logger::default())
             .service(index)
+            .service(tmtu_bot)
+            .service(post_front_end)
             .service(web::scope("/api").service(get_bot_list).service(get_bot))
             .service(actix_files::Files::new("/static", "static/"))
     })
@@ -44,6 +51,34 @@ pub struct BotExecutor(pub Arc<MasterBot>);
 
 impl Actor for BotExecutor {
     type Context = SyncContext<Self>;
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+struct FrontEndForm {
+    front_end: FrontEnd,
+}
+
+#[post("/front-end")]
+async fn post_front_end(form: web::Form<FrontEndForm>) -> Result<HttpResponse, Error> {
+    front_end_cookie::set_front_end(form.into_inner().front_end).await
+}
+
+struct BotNameListRequest;
+
+impl Message for BotNameListRequest {
+    // A plain Vec does not work for some reason
+    type Result = Result<Vec<String>, ()>;
+}
+
+impl Handler<BotNameListRequest> for BotExecutor {
+    type Result = Result<Vec<String>, ()>;
+
+    fn handle(&mut self, _: BotNameListRequest, _: &mut Self::Context) -> Self::Result {
+        let bot = &self.0;
+
+        Ok(bot.bot_names())
+    }
 }
 
 struct BotDataListRequest;
@@ -86,17 +121,32 @@ struct OverviewTemplate<'a> {
     bots: &'a [BotData],
 }
 
+#[derive(Template)]
+#[template(path = "tmtu/index.htm")]
+struct TmtuTemplate {
+    bot_names: Vec<String>,
+    bot: Option<BotData>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct BotData {
     pub name: String,
     pub state: crate::bot::State,
     pub volume: f64,
+    pub position: Option<Duration>,
     pub currently_playing: Option<AudioMetadata>,
     pub playlist: Vec<AudioMetadata>,
 }
 
 #[get("/")]
-async fn index(bot: web::Data<Addr<BotExecutor>>) -> impl Responder {
+async fn index(bot: web::Data<Addr<BotExecutor>>, front: FrontEnd) -> Result<HttpResponse, Error> {
+    match front {
+        FrontEnd::Lazy => lazy_index(bot).await,
+        FrontEnd::Tmtu => tmtu_index(bot).await,
+    }
+}
+
+async fn lazy_index(bot: web::Data<Addr<BotExecutor>>) -> Result<HttpResponse, Error> {
     let bot_datas = match bot.send(BotDataListRequest).await.unwrap() {
         Ok(data) => data,
         Err(_) => Vec::with_capacity(0),
@@ -106,6 +156,38 @@ async fn index(bot: web::Data<Addr<BotExecutor>>) -> impl Responder {
         bots: &bot_datas[..],
     }
     .into_response()
+}
+
+async fn tmtu_index(bot: web::Data<Addr<BotExecutor>>) -> Result<HttpResponse, Error> {
+    let bot_names = bot.send(BotNameListRequest).await.unwrap().unwrap();
+
+    TmtuTemplate {
+        bot_names,
+        bot: None,
+    }
+    .into_response()
+}
+
+#[get("/tmtu/{name}")]
+async fn tmtu_bot(
+    bot: web::Data<Addr<BotExecutor>>,
+    name: web::Path<String>,
+    front: FrontEnd,
+) -> Result<HttpResponse, Error> {
+    if front != FrontEnd::Tmtu {
+        return Ok(HttpResponse::Found().header(header::LOCATION, "/").finish());
+    }
+
+    let bot_names = bot.send(BotNameListRequest).await.unwrap().unwrap();
+    if let Some(bot) = bot.send(BotDataRequest(name.into_inner())).await.unwrap() {
+        TmtuTemplate {
+            bot_names,
+            bot: Some(bot),
+        }
+        .into_response()
+    } else {
+        Ok(HttpResponse::Found().header(header::LOCATION, "/").finish())
+    }
 }
 
 #[get("/bots")]
@@ -147,5 +229,21 @@ async fn get_bot(bot: web::Data<Addr<BotExecutor>>, name: web::Path<String>) -> 
         Ok(web::Json(bot_data))
     } else {
         Err(ApiErrorKind::NotFound)
+    }
+}
+
+mod filters {
+    use std::time::Duration;
+
+    pub fn fmt_duration(duration: &Option<Duration>) -> Result<String, askama::Error> {
+        if let Some(duration) = duration {
+            let secs = duration.as_secs();
+            let mins = secs / 60;
+            let submin_secs = secs % 60;
+
+            Ok(format!("{:02}:{:02}", mins, submin_secs))
+        } else {
+            Ok(String::from("--:--"))
+        }
     }
 }

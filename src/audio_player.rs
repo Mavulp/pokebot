@@ -223,6 +223,12 @@ impl AudioPlayer {
         *self.volume_f64.read().unwrap()
     }
 
+    pub fn position(&self) -> Option<Duration> {
+        self.pipeline
+            .query_position::<gst::ClockTime>()
+            .and_then(|t| t.0.map(|v| Duration::from_nanos(v)))
+    }
+
     pub fn currently_playing(&self) -> Option<AudioMetadata> {
         self.currently_playing.read().unwrap().clone()
     }

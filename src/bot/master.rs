@@ -222,6 +222,7 @@ impl MasterBot {
             name: name,
             state: bot.state(),
             volume: bot.volume(),
+            position: bot.position(),
             currently_playing: bot.currently_playing(),
             playlist: bot.playlist_to_vec(),
         })
@@ -237,11 +238,24 @@ impl MasterBot {
                 name: name.clone(),
                 state: bot.state(),
                 volume: bot.volume(),
+                position: bot.position(),
                 currently_playing: bot.currently_playing(),
                 playlist: bot.playlist_to_vec(),
             };
 
             result.push(bot_data);
+        }
+
+        result
+    }
+
+    pub fn bot_names(&self) -> Vec<String> {
+        let music_bots = self.music_bots.read().unwrap();
+
+        let len = music_bots.connected_bots.len();
+        let mut result = Vec::with_capacity(len);
+        for (name, _) in &music_bots.connected_bots {
+            result.push(name.clone());
         }
 
         result
@@ -267,6 +281,8 @@ pub struct MasterArgs {
     pub channel: Option<String>,
     #[serde(default = "default_verbose")]
     pub verbose: u8,
+    pub domain: String,
+    pub bind_address: String,
     pub names: Vec<String>,
     pub id: Identity,
     pub ids: Vec<Identity>,
@@ -301,6 +317,8 @@ impl MasterArgs {
             ids: self.ids,
             local,
             address,
+            domain: self.domain,
+            bind_address: self.bind_address,
             id: self.id,
             channel,
             verbose,
