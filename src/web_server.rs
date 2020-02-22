@@ -44,7 +44,7 @@ pub async fn start(args: WebServerArgs) -> std::io::Result<()> {
                     .service(api::get_bot),
             )
             .service(web::scope("/docs").service(get_api_docs))
-            .service(actix_files::Files::new("/static", "static/"))
+            .service(actix_files::Files::new("/static", "web_server/static/"))
     })
     .bind(args.bind_address)?
     .run()
