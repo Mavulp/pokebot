@@ -5,6 +5,10 @@ address = "localhost"
 # Channel for the master bot
 channel = "Lobby"
 
+# Web server settings
+domain = "localhost"
+bind_address = "127.0.0.1:45538"
+
 # Names for the music bots
 names = ["MusicBot"]
 

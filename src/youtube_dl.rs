@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use futures::compat::Future01CompatExt;
 use std::process::{Command, Stdio};
 use tokio_process::CommandExt;
@@ -9,7 +11,22 @@ use log::debug;
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AudioMetadata {
     pub url: String,
-    pub title: Option<String>,
+    pub webpage_url: String,
+    pub title: String,
+    pub thumbnail: Option<String>,
+    #[serde(default, deserialize_with = "duration_deserialize")]
+    pub duration: Option<Duration>,
+    #[serde(skip)]
+    pub added_by: String,
+}
+
+fn duration_deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let dur: Option<f64> = Deserialize::deserialize(deserializer)?;
+
+    Ok(dur.map(|v| Duration::from_secs_f64(v)))
 }
 
 pub async fn get_audio_download_url(uri: String) -> Result<AudioMetadata, String> {

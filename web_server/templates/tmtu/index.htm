@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>tmtu mode</title>
+    <style type="text/css">
+      body {
+        margin: 16px;
+      }
+      td {
+        padding-right: 16px;
+        padding-top: 1px;
+        padding-bottom: : 1px;
+      }
+      td, th {
+        vertical-align:top;
+      }
+      .tableheader td {
+        color: gray;
+        border-bottom: 1px solid gray;
+      }
+      .stat {
+        color: gray;
+        text-align: right;
+        white-space: nowrap;
+        padding-left: 8px
+      }
+      .tracktable {
+        border-left: 1px solid gray;
+      }
+      .tracktable tr:hover {
+        background-color: #E0E0E0;
+      }
+      .bottable tr:hover {
+        background-color: #E0E0E0;
+      }
+      #test:hover {
+        background: 2px solid red;
+      }
+      a {
+        color: teal;
+      }
+      a:hover {
+        color: red;
+      }
+      a[visited] {
+        color: navy
+      }
+      .addedby {
+        color: darkorange;
+      }
+      .botname {
+      }
+      .selected {
+        font-weight: 700;
+      }
+      .playing {
+        background: PaleGreen;
+      }
+    </style>
+  </head>
+  <body>
+    <table>
+      <tr>
+        <td colspan="2">
+          <h1>PokeBot</h1>
+          <p>A web interface for inspecting currently playing audio in PokeBot. Select an instance of the bot to view it's playlist and history.</p>
+          <nav style="display: inline-block;">
+            <ol>
+                {% let bot_name %}
+                {% match bot %}
+                  {% when Some with (bot) %}
+                    {% let bot_name = bot.name.clone() %}
+                  {% when None %}
+                    {% let bot_name = "".to_owned() %}
+                {% endmatch %}
+              {% for name in bot_names %}
+                {% if name.clone() == bot_name %}
+                  <li><a href="/bot/{{ name }}" class="botname selected">{{ name }}</a></li>
+                {% else %}
+                  <li><a href="/bot/{{ name }}" class="botname">{{ name }}</a></li>
+                {% endif %}
+              {% endfor %}
+            </ol>
+          </nav>
+        </td>
+      </tr>
+      {% match bot %}
+        {% when Some with (bot) %}
+          <tr>
+            <td colspan="2">
+              <h2>Status</h2>
+              <div class="{{ bot.state|lower }}" style="padding: 5px;">
+                {% match bot.currently_playing %}
+                  {% when Some with (current) %}
+                  <p>Currently playing: <a href="{{ current.webpage_url }}">{{ current.title }}</a></p>
+                  <p><strong>{{ bot.position|fmt_duration }} / {{ current.duration|fmt_duration }}</strong>
+                    {% match current.duration %}
+                      {% when Some with (duration) %}
+                        {% let position %}
+                        {% match bot.position %}
+                          {% when Some with (pos) %}
+                            {% let position = pos.as_secs_f64() %}
+                          {% when None %}
+                            {% let position = 0.0 %}
+                        {% endmatch %}
+                        {% let progress = position / duration.as_secs_f64() %}
+                        {% let percent = progress * 100.0 %}
+                        <progress value="{{ percent }}" max="100" title="test"></progress></p>
+                      {% when None %}
+                        <progress value="0" max="100" title="test"></progress></p>
+                    {% endmatch %}
+                  {% when None %}
+                {% endmatch %}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <h2>Playlist</h2>
+              <table class="tracktable" cellspacing="0" cellpadding="0">
+                <tr class="tableheader">
+                  <td class="stat">#</td>
+                  <td>track</td>
+                  <td>length</td>
+                  <td>added by</td>
+                </tr>
+                {% for item in bot.playlist %}
+                  <tr>
+                    <td class="stat">{{ loop.index }}</td>
+                    <td><a href="{{ item.webpage_url }}">{{ item.title }}</a></td>
+                    <td>
+                      {% let duration = item.duration %}
+                      {{ duration|fmt_duration }}
+                    </td>
+                    <td>{{ item.added_by }}</td>
+                  </tr>
+                {% endfor %}
+              </table>
+            </td>
+          </tr>
+        {% when None %}
+        {% endmatch %}
+    </table>
+  </body>
+</html>

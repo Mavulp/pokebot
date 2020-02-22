@@ -34,4 +34,10 @@ gstreamer-audio = "0.15.0"
 byte-slice-cast = "0.3.5"
 serde_json = "1.0.44"
 serde = "1.0.104"
+actix = "0.9.0"
+actix-rt = "1.0.0"
+actix-web = "2.0.0"
+actix-files = "0.2.1"
+askama = { version = "0.9.0", features = ["with-actix-web"] }
 rand = { version = "0.7.3", features = ["small_rng"] }
+derive_more = "0.99.2"

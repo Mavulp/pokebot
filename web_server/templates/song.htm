@@ -1,0 +1,7 @@
+<a href="{{ item.webpage_url }}">{{ item.title }}</a>
+<span>({{ item.duration|fmt_duration }})</span>
+{% match item.thumbnail %}
+  {% when Some with (thumbnail) %}
+    <img src="{{ thumbnail }}" height="128">
+  {% when None %}
+{% endmatch %}

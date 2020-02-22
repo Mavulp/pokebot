@@ -1,0 +1,126 @@
+{% extends "base.htm" %}
+
+{% block title %}API Documentation{% endblock %}
+
+{% block content %}
+<h1>API Documentation</h1>
+<nav>
+  <a href="/">Bots</a>
+  <a href="/docs/api">API</a>
+</nav>
+
+<h2>Bot list</h2>
+<p>Show a list of all bots.</p>
+
+<p><b>URL</b>: <span class="code-background">/api/bots</span></p>
+<p><b>Method</b>: <span class="code-background">GET</span></p>
+<p><b>Auth required</b>: <span class="code-background">NO</span></p>
+
+<h3>Success Response</h3>
+
+<p><b>Code</b>: <span class="code-background">200 OK</span></p>
+
+<h3>Content example</h3>
+
+<!-- Generated with syntect and adjusted -->
+<pre>
+<span class="code-normal">[
+</span><span class="code-normal">  {
+</span><span class="code-normal">    &quot;</span><span class="code-string">name</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">MusicBot</span><span class="code-normal">&quot;,
+</span><span class="code-normal">    &quot;</span><span class="code-string">state</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">Playing</span><span class="code-normal">&quot;,
+</span><span class="code-normal">    &quot;</span><span class="code-string">volume</span><span class="code-normal">&quot;: </span><span class="code-number">0.5</span><span class="code-normal">,
+</span><span class="code-normal">    &quot;</span><span class="code-string">position</span><span class="code-normal">&quot;: {
+</span><span class="code-normal">      &quot;</span><span class="code-string">secs</span><span class="code-normal">&quot;: </span><span class="code-number">10</span><span class="code-normal">,
+</span><span class="code-normal">      &quot;</span><span class="code-string">nanos</span><span class="code-normal">&quot;: </span><span class="code-number">63573687
+</span><span class="code-normal">    },
+</span><span class="code-normal">    &quot;</span><span class="code-string">currently_playing</span><span class="code-normal">&quot;: {
+</span><span class="code-normal">      &quot;</span><span class="code-string">url</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">&lt;temp_url&gt;</span><span class="code-normal">&quot;,
+</span><span class="code-normal">      &quot;</span><span class="code-string">webpage_url</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">https://www.youtube.com/watch?v=dQw4w9WgXcQ</span><span class="code-normal">&quot;,
+</span><span class="code-normal">      &quot;</span><span class="code-string">title</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">Rick Astley - Never Gonna Give You Up (Video)</span><span class="code-normal">&quot;,
+</span><span class="code-normal">      &quot;</span><span class="code-string">thumbnail</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg</span><span class="code-normal">&quot;,
+</span><span class="code-normal">      &quot;</span><span class="code-string">duration</span><span class="code-normal">&quot;: {
+</span><span class="code-normal">        &quot;</span><span class="code-string">secs</span><span class="code-normal">&quot;: </span><span class="code-number">212</span><span class="code-normal">,
+</span><span class="code-normal">        &quot;</span><span class="code-string">nanos</span><span class="code-normal">&quot;: </span><span class="code-number">0
+</span><span class="code-normal">      }
+</span><span class="code-normal">    },
+</span><span class="code-normal">    &quot;</span><span class="code-string">playlist</span><span class="code-normal">&quot;: [
+</span><span class="code-normal">      {
+</span><span class="code-normal">        &quot;</span><span class="code-string">url</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">&lt;temp_url&gt;</span><span class="code-normal">&quot;,
+</span><span class="code-normal">        &quot;</span><span class="code-string">webpage_url</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">https://www.youtube.com/watch?v=dQw4w9WgXcQ</span><span class="code-normal">&quot;,
+</span><span class="code-normal">        &quot;</span><span class="code-string">title</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">Rick Astley - Never Gonna Give You Up (Video)</span><span class="code-normal">&quot;,
+</span><span class="code-normal">        &quot;</span><span class="code-string">thumbnail</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg</span><span class="code-normal">&quot;,
+</span><span class="code-normal">        &quot;</span><span class="code-string">duration</span><span class="code-normal">&quot;: {
+</span><span class="code-normal">          &quot;</span><span class="code-string">secs</span><span class="code-normal">&quot;: </span><span class="code-number">212</span><span class="code-normal">,
+</span><span class="code-normal">          &quot;</span><span class="code-string">nanos</span><span class="code-normal">&quot;: </span><span class="code-number">0
+</span><span class="code-normal">        }
+</span><span class="code-normal">      }
+</span><span class="code-normal">    ]
+</span><span class="code-normal">  }
+</span><span class="code-normal">]
+</span></pre>
+
+
+<h2>Show Bot</h2>
+<p>Show a specific bot.</p>
+
+<p><b>URL</b>: <span class="code-background">/api/bots/:botname</span></p>
+<p><b>Method</b>: <span class="code-background">GET</span></p>
+<p><b>Auth required</b>: <span class="code-background">NO</span></p>
+
+<h3>Success Response</h3>
+<p><b>Code</b>: <span class="code-background">200 OK</span></p>
+
+<h3>Content example</h3>
+
+<!-- Generated with syntect and adjusted -->
+<pre>
+<span class="code-normal">{
+</span><span class="code-normal">  &quot;</span><span class="code-string">name</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">MusicBot</span><span class="code-normal">&quot;,
+</span><span class="code-normal">  &quot;</span><span class="code-string">state</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">Playing</span><span class="code-normal">&quot;,
+</span><span class="code-normal">  &quot;</span><span class="code-string">volume</span><span class="code-normal">&quot;: </span><span class="code-number">0.5</span><span class="code-normal">,
+</span><span class="code-normal">  &quot;</span><span class="code-string">position</span><span class="code-normal">&quot;: {
+</span><span class="code-normal">    &quot;</span><span class="code-string">secs</span><span class="code-normal">&quot;: </span><span class="code-number">142</span><span class="code-normal">,
+</span><span class="code-normal">    &quot;</span><span class="code-string">nanos</span><span class="code-normal">&quot;: </span><span class="code-number">690911766
+</span><span class="code-normal">  },
+</span><span class="code-normal">  &quot;</span><span class="code-string">currently_playing</span><span class="code-normal">&quot;: {
+</span><span class="code-normal">    &quot;</span><span class="code-string">url</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">&lt;temp_url&gt;</span><span class="code-normal">&quot;,
+</span><span class="code-normal">    &quot;</span><span class="code-string">webpage_url</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">https://www.youtube.com/watch?v=dQw4w9WgXcQ</span><span class="code-normal">&quot;,
+</span><span class="code-normal">    &quot;</span><span class="code-string">title</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">Rick Astley - Never Gonna Give You Up (Video)</span><span class="code-normal">&quot;,
+</span><span class="code-normal">    &quot;</span><span class="code-string">thumbnail</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg</span><span class="code-normal">&quot;,
+</span><span class="code-normal">    &quot;</span><span class="code-string">duration</span><span class="code-normal">&quot;: {
+</span><span class="code-normal">      &quot;</span><span class="code-string">secs</span><span class="code-normal">&quot;: </span><span class="code-number">212</span><span class="code-normal">,
+</span><span class="code-normal">      &quot;</span><span class="code-string">nanos</span><span class="code-normal">&quot;: </span><span class="code-number">0
+</span><span class="code-normal">    }
+</span><span class="code-normal">  },
+</span><span class="code-normal">  &quot;</span><span class="code-string">playlist</span><span class="code-normal">&quot;: [
+</span><span class="code-normal">    {
+</span><span class="code-normal">      &quot;</span><span class="code-string">url</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">&lt;temp_url&gt;</span><span class="code-normal">&quot;,
+</span><span class="code-normal">      &quot;</span><span class="code-string">webpage_url</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">https://www.youtube.com/watch?v=dQw4w9WgXcQ</span><span class="code-normal">&quot;,
+</span><span class="code-normal">      &quot;</span><span class="code-string">title</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">Rick Astley - Never Gonna Give You Up (Video)</span><span class="code-normal">&quot;,
+</span><span class="code-normal">      &quot;</span><span class="code-string">thumbnail</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg</span><span class="code-normal">&quot;,
+</span><span class="code-normal">      &quot;</span><span class="code-string">duration</span><span class="code-normal">&quot;: {
+</span><span class="code-normal">        &quot;</span><span class="code-string">secs</span><span class="code-normal">&quot;: </span><span class="code-number">212</span><span class="code-normal">,
+</span><span class="code-normal">        &quot;</span><span class="code-string">nanos</span><span class="code-normal">&quot;: </span><span class="code-number">0
+</span><span class="code-normal">      }
+</span><span class="code-normal">    }
+</span><span class="code-normal">  ]
+</span><span class="code-normal">}
+</span></pre>
+
+<h3>Error Response</h3>
+
+<p><b>Condition</b>: If ':botname' is not connected to TeamSpeak.</p>
+
+<p><b>Code</b>: <span class="code-background">404 NOT FOUND</span></p>
+
+<b>Content</b>:
+
+<!-- Generated with syntect and adjusted -->
+<pre>
+<span class="code-normal">{
+</span><span class="code-normal">  &quot;</span><span class="code-string">error</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">Not Found</span><span class="code-normal">&quot;,
+</span><span class="code-normal">  &quot;</span><span class="code-string">description</span><span class="code-normal">&quot;: &quot;</span><span class="code-string">The requested resource was not found</span><span class="code-normal">&quot;
+</span><span class="code-normal">}
+</span></pre>
+
+{% endblock %}

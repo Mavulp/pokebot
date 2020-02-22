@@ -1,0 +1,36 @@
+{% extends "base.htm" %}
+
+{% block title %}Overview{% endblock %}
+
+{% block content %}
+<h1>Bots</h1>
+<form action="/front-end" method="POST">
+  <input type="hidden" placeholder="Enter front end" name="front-end" value="tmtu">
+  <button type="submit">tmtu-mode</button>
+</form>
+<nav>
+  <a href="/">Bots</a>
+  <a href="/docs/api">API</a>
+</nav>
+
+<ul>
+  {% for bot in bots %}
+    <h2>{{ bot.name }}</h1>
+    <div>State: {{ bot.state }}</div>
+    <div>Volume: {{ bot.volume * 100.0 }}%</div>
+    {% match bot.currently_playing %}
+      {% when Some with (current) %}
+        <span>Currently playing:</span>
+        {% let item = current %}
+        {% include "song.htm" %}
+      {% when None %}
+    {% endmatch %}
+
+    {% for item in bot.playlist %}
+      <li>
+        {% include "song.htm" %}
+      </li>
+    {% endfor %}
+  {% endfor %}
+</ul>
+{% endblock %}

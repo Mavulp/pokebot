@@ -10,8 +10,10 @@ use gstreamer_audio::{StreamVolume, StreamVolumeFormat};
 use crate::bot::{MusicBotMessage, State};
 use glib::BoolError;
 use log::{debug, error, info, warn};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use tokio02::sync::mpsc::UnboundedSender;
+
+use crate::youtube_dl::AudioMetadata;
 
 static GST_INIT: Once = Once::new();
 
@@ -33,8 +35,10 @@ pub struct AudioPlayer {
     bus: gst::Bus,
     http_src: gst::Element,
 
+    volume_f64: RwLock<f64>,
     volume: gst::Element,
-    sender: Arc<Mutex<UnboundedSender<MusicBotMessage>>>,
+    sender: Arc<RwLock<UnboundedSender<MusicBotMessage>>>,
+    currently_playing: RwLock<Option<AudioMetadata>>,
 }
 
 fn make_element(factoryname: &str, display_name: &str) -> Result<gst::Element, AudioPlayerError> {
@@ -83,7 +87,7 @@ fn add_decode_bin_new_pad_callback(
 
 impl AudioPlayer {
     pub fn new(
-        sender: Arc<Mutex<UnboundedSender<MusicBotMessage>>>,
+        sender: Arc<RwLock<UnboundedSender<MusicBotMessage>>>,
         callback: Option<Box<dyn FnMut(&[u8]) + Send>>,
     ) -> Result<Self, AudioPlayerError> {
         GST_INIT.call_once(|| gst::init().unwrap());
@@ -104,6 +108,12 @@ impl AudioPlayer {
 
         pipeline.add(&audio_bin)?;
 
+        // The documentation says that we have to make sure to handle
+        // all messages if auto flushing is deactivated.
+        // I hope our way of reading messages is good enough.
+        //
+        // https://gstreamer.freedesktop.org/documentation/gstreamer/gstpipeline.html#gst_pipeline_set_auto_flush_bus
+        pipeline.set_auto_flush_bus(false);
         pipeline.set_state(gst::State::Ready)?;
 
         Ok(AudioPlayer {
@@ -111,8 +121,10 @@ impl AudioPlayer {
             bus,
             http_src,
 
+            volume_f64: RwLock::new(0.0),
             volume,
             sender,
+            currently_playing: RwLock::new(None),
         })
     }
 
@@ -173,7 +185,16 @@ impl AudioPlayer {
         Ok((audio_bin, volume, ghost_pad))
     }
 
-    pub fn set_source_url(&self, location: String) -> Result<(), AudioPlayerError> {
+    pub fn set_metadata(&self, data: AudioMetadata) -> Result<(), AudioPlayerError> {
+        self.set_source_url(data.url.clone())?;
+
+        let mut currently_playing = self.currently_playing.write().unwrap();
+        *currently_playing = Some(data);
+
+        Ok(())
+    }
+
+    fn set_source_url(&self, location: String) -> Result<(), AudioPlayerError> {
         info!("Setting location URI: {}", location);
         self.http_src.set_property("location", &location)?;
 
@@ -181,6 +202,7 @@ impl AudioPlayer {
     }
 
     pub fn set_volume(&self, volume: f64) -> Result<(), AudioPlayerError> {
+        *self.volume_f64.write().unwrap() = volume;
         let db = 50.0 * volume.log10();
         info!("Setting volume: {} -> {} dB", volume, db);
 
@@ -203,8 +225,25 @@ impl AudioPlayer {
         }
     }
 
+    pub fn volume(&self) -> f64 {
+        *self.volume_f64.read().unwrap()
+    }
+
+    pub fn position(&self) -> Option<Duration> {
+        self.pipeline
+            .query_position::<gst::ClockTime>()
+            .and_then(|t| t.0.map(|v| Duration::from_nanos(v)))
+    }
+
+    pub fn currently_playing(&self) -> Option<AudioMetadata> {
+        self.currently_playing.read().unwrap().clone()
+    }
+
     pub fn reset(&self) -> Result<(), AudioPlayerError> {
         info!("Setting pipeline state to null");
+
+        let mut currently_playing = self.currently_playing.write().unwrap();
+        *currently_playing = None;
 
         self.pipeline.set_state(gst::State::Null)?;
 
@@ -273,20 +312,20 @@ impl AudioPlayer {
     pub fn quit(&self, reason: String) {
         info!("Quitting audio player");
 
-        if let Err(e) = self
+        if let Err(_) = self
             .bus
             .post(&gst::Message::new_application(gst::Structure::new_empty("quit")).build())
         {
-            warn!("Failed to send \"quit\" app event: {}", e);
+            warn!("Tried to send \"quit\" app event on flushing bus.");
         }
 
-        let sender = self.sender.lock().unwrap();
+        let sender = self.sender.read().unwrap();
         sender.send(MusicBotMessage::Quit(reason)).unwrap();
     }
 
     fn send_state(&self, state: State) {
         info!("Sending state {:?} to application", state);
-        let sender = self.sender.lock().unwrap();
+        let sender = self.sender.read().unwrap();
         sender.send(MusicBotMessage::StateChange(state)).unwrap();
     }
 
@@ -362,7 +401,7 @@ impl AudioPlayer {
                         }
                     }
                     _ => {
-                        //debug!("{:?}", msg)
+                        //debug!("Unhandled message on bus: {:?}", msg)
                     }
                 };
             }
