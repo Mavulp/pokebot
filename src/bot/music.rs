@@ -12,8 +12,9 @@ use tsclientlib::{data, ChannelId, ClientId, ConnectOptions, Identity, Invoker, 
 use crate::audio_player::{AudioPlayer, AudioPlayerError, PollResult, Seek};
 use crate::command::Command;
 use crate::playlist::Playlist;
-use crate::teamspeak::TeamSpeakConnection;
+use crate::teamspeak as ts;
 use crate::youtube_dl::AudioMetadata;
+use ts::TeamSpeakConnection;
 
 #[derive(Debug)]
 pub struct Message {
@@ -173,7 +174,7 @@ impl MusicBot {
 
     fn start_playing_audio(&self, metadata: AudioMetadata) {
         if let Some(title) = metadata.title {
-            self.send_message(&format!("Playing '{}'", title));
+            self.send_message(&format!("Playing {}", ts::underline(&title)));
             self.set_description(&format!("Currently playing '{}'", title));
         } else {
             self.send_message("Playing unknown title");
@@ -198,7 +199,7 @@ impl MusicBot {
                     }
                 } else {
                     if let Some(title) = metadata.title {
-                        self.send_message(&format!("Added '{}' to playlist", title));
+                        self.send_message(&format!("Added {} to playlist", ts::underline(&title)));
                     } else {
                         self.send_message("Added to playlist");
                     }
@@ -293,7 +294,7 @@ impl MusicBot {
             Command::Seek { amount } => {
                 if let Ok(seek) = parse_seek(&amount) {
                     if let Ok(time) = self.player.seek(seek) {
-                        self.send_message(&format!("New position: {}", time));
+                        self.send_message(&format!("New position: {}", ts::bold(&time)));
                     } else {
                         self.send_message("Failed to seek");
                     }

@@ -15,6 +15,10 @@ use log::error;
 
 use crate::bot::{Message, MusicBotMessage};
 
+mod bbcode;
+
+pub use bbcode::*;
+
 pub struct TeamSpeakConnection {
     conn: Connection,
 }
