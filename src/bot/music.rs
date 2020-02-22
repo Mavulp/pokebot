@@ -187,7 +187,13 @@ impl MusicBot {
     }
 
     fn start_playing_audio(&self, metadata: AudioMetadata) {
-        self.send_message(&format!("Playing {}", ts::underline(&metadata.title)));
+        let duration = if let Some(duration) = metadata.duration {
+            format!("({})", ts::bold(&humantime::format_duration(duration)))
+        } else {
+            format!("")
+        };
+
+        self.send_message(&format!("Playing {} {}", ts::underline(&metadata.title), duration));
         self.set_description(&format!("Currently playing '{}'", metadata.title));
         self.player.reset().unwrap();
         self.player.set_metadata(metadata).unwrap();
@@ -208,9 +214,16 @@ impl MusicBot {
                         self.start_playing_audio(request);
                     }
                 } else {
+                    let duration = if let Some(duration) = metadata.duration {
+                        format!(" ({})", ts::bold(&humantime::format_duration(duration)))
+                    } else {
+                        format!("")
+                    };
+
                     self.send_message(&format!(
-                        "Added {} to playlist",
-                        ts::underline(&metadata.title)
+                        "Added {}{} to playlist",
+                        ts::underline(&metadata.title),
+                        duration
                     ));
                 }
             }
