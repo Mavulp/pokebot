@@ -154,7 +154,7 @@ impl MusicBot {
             player,
             teamspeak: connection,
             playlist,
-            state: Arc::new(RwLock::new(State::Stopped)),
+            state: Arc::new(RwLock::new(State::EndOfStream)),
         });
 
         let cbot = bot.clone();
@@ -175,6 +175,8 @@ impl MusicBot {
             }
             debug!("Left message loop");
         };
+
+        bot.update_name(State::EndOfStream);
 
         (bot, msg_loop)
     }
@@ -363,6 +365,7 @@ impl MusicBot {
             Command::Volume { percent: volume } => {
                 let volume = volume.max(0.0).min(100.0) * 0.01;
                 self.player.set_volume(volume)?;
+                self.update_name(self.state());
             }
             Command::Leave => {
                 self.quit(String::from("Leaving"));
@@ -372,20 +375,19 @@ impl MusicBot {
         Ok(())
     }
 
+    fn update_name(&self, state: State) {
+        let volume = (self.volume() * 100.0).round();
+        let name = match state {
+            State::EndOfStream => format!("🎵 {} ({}%)", self.name, volume),
+            _ => format!("🎵 {} - {} ({}%)", self.name, state, volume),
+        };
+        self.set_nickname(&name);
+    }
+
     fn on_state(&self, state: State) -> Result<(), AudioPlayerError> {
         let mut current_state = self.state.write().unwrap();
         if *current_state != state {
             match state {
-                State::Playing => {
-                    self.set_nickname(&format!("🎵 {} - Playing", self.name));
-                }
-                State::Paused => {
-                    self.set_nickname(&format!("🎵 {} - Paused", self.name));
-                }
-                State::Stopped => {
-                    self.set_nickname(&format!("🎵 {}", self.name));
-                    self.set_description("");
-                }
                 State::EndOfStream => {
                     let next_track = self
                         .playlist
@@ -397,10 +399,15 @@ impl MusicBot {
 
                         self.start_playing_audio(request);
                     } else {
-                        self.set_nickname(&format!("🎵 {}", self.name));
+                        self.set_nickname(&format!("🎵 {} ({}%)", self.name, self.volume().round()));
                         self.set_description("");
                     }
                 }
+                State::Stopped => {
+                    self.update_name(state);
+                    self.set_description("");
+                }
+                _ => self.update_name(state),
             }
         }
 
