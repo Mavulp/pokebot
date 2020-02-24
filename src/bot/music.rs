@@ -386,19 +386,23 @@ impl MusicBot {
 
                         self.start_playing_audio(request);
                     } else {
-                        self.set_nickname(&format!("🎵 {} ({}%)", self.name, self.volume().round()));
+                        self.update_name(state);
                         self.set_description("");
                     }
                 }
                 State::Stopped => {
-                    self.update_name(state);
-                    self.set_description("");
+                    if *current_state != State::EndOfStream {
+                        self.update_name(state);
+                        self.set_description("");
+                    }
                 }
                 _ => self.update_name(state),
             }
         }
 
-        *current_state = state;
+        if !(*current_state == State::EndOfStream && state == State::Stopped) {
+            *current_state = state;
+        }
 
         Ok(())
     }
