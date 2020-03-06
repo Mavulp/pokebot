@@ -329,6 +329,9 @@ impl MusicBot {
 
                 self.add_audio(url.to_string(), invoker.name).await;
             }
+            Command::Search { query } => {
+                self.add_audio(format!("ytsearch:{}", query.join(" ")), invoker.name).await;
+            }
             Command::Pause => {
                 self.player.pause()?;
             }
