@@ -14,15 +14,9 @@ use std::sync::{Arc, RwLock};
 use tokio02::sync::mpsc::UnboundedSender;
 
 use crate::youtube_dl::AudioMetadata;
+use crate::command::{Seek, VolumeChange};
 
 static GST_INIT: Once = Once::new();
-
-#[derive(Copy, Clone, Debug)]
-pub enum Seek {
-    Positive(Duration),
-    Negative(Duration),
-    Absolute(Duration),
-}
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum PollResult {
@@ -201,10 +195,17 @@ impl AudioPlayer {
         Ok(())
     }
 
-    pub fn set_volume(&self, volume: f64) -> Result<(), AudioPlayerError> {
-        *self.volume_f64.write().unwrap() = volume;
-        let db = 50.0 * volume.log10();
-        info!("Setting volume: {} -> {} dB", volume, db);
+    pub fn change_volume(&self, volume: VolumeChange) -> Result<(), AudioPlayerError> {
+        let new_volume = match volume {
+            VolumeChange::Positive(vol) => self.volume() + vol,
+            VolumeChange::Negative(vol) => self.volume() - vol,
+            VolumeChange::Absolute(vol) => vol,
+        };
+        let new_volume = new_volume.max(0.0).min(1.0);
+
+        *self.volume_f64.write().unwrap() = new_volume;
+        let db = 50.0 * new_volume.log10();
+        info!("Setting volume: {} -> {} dB", new_volume, db);
 
         let linear =
             StreamVolume::convert_volume(StreamVolumeFormat::Db, StreamVolumeFormat::Linear, db);
