@@ -11,11 +11,12 @@ use structopt::StructOpt;
 use tokio02::sync::mpsc::UnboundedSender;
 use tsclientlib::{data, ChannelId, ClientId, ConnectOptions, Identity, Invoker, MessageTarget};
 
-use crate::audio_player::{AudioPlayer, AudioPlayerError, PollResult, Seek};
+use crate::audio_player::{AudioPlayer, AudioPlayerError, PollResult};
 use crate::command::Command;
 use crate::playlist::Playlist;
 use crate::teamspeak as ts;
 use crate::youtube_dl::AudioMetadata;
+use crate::command::VolumeChange;
 use ts::TeamSpeakConnection;
 
 #[derive(Debug)]
@@ -23,27 +24,6 @@ pub struct Message {
     pub target: MessageTarget,
     pub invoker: Invoker,
     pub text: String,
-}
-
-fn parse_seek(mut amount: &str) -> Result<Seek, ()> {
-    let sign = match amount.chars().next() {
-        Some('+') => 1,
-        Some('-') => -1,
-        _ => 0,
-    };
-    let is_relative = sign != 0;
-
-    if is_relative {
-        amount = &amount[1..];
-    }
-
-    let duration = humantime::parse_duration(amount).map_err(|_| ())?;
-
-    match sign {
-        1 => Ok(Seek::Positive(duration)),
-        -1 => Ok(Seek::Negative(duration)),
-        _ => Ok(Seek::Absolute(duration)),
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
@@ -139,7 +119,7 @@ impl MusicBot {
             (audio_player, Some(connection))
         };
 
-        player.set_volume(0.5).unwrap();
+        player.change_volume(VolumeChange::Absolute(0.5)).unwrap();
         let player = Arc::new(player);
         let playlist = Arc::new(RwLock::new(Playlist::new()));
 
@@ -336,14 +316,10 @@ impl MusicBot {
                 self.player.reset()?;
             }
             Command::Seek { amount } => {
-                if let Ok(seek) = parse_seek(&amount) {
-                    if let Ok(time) = self.player.seek(seek) {
-                        self.send_message(&format!("New position: {}", ts::bold(&time)));
-                    } else {
-                        self.send_message("Failed to seek");
-                    }
+                if let Ok(time) = self.player.seek(amount) {
+                    self.send_message(&format!("New position: {}", ts::bold(&time)));
                 } else {
-                    info!("Failed to parse seeking command");
+                    self.send_message("Failed to seek");
                 }
             }
             Command::Next => {
@@ -362,9 +338,8 @@ impl MusicBot {
                     .expect("RwLock was not poisoned")
                     .clear();
             }
-            Command::Volume { percent: volume } => {
-                let volume = volume.max(0.0).min(100.0) * 0.01;
-                self.player.set_volume(volume)?;
+            Command::Volume { volume } => {
+                self.player.change_volume(volume)?;
                 self.update_name(self.state());
             }
             Command::Leave => {
