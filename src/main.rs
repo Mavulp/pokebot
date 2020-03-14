@@ -2,7 +2,9 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::thread;
+use std::time::{Duration, Instant};
 
+use futures::compat::Future01CompatExt;
 use futures::future::{FutureExt, TryFutureExt};
 use log::{debug, error, info};
 use structopt::clap::AppSettings;
@@ -97,49 +99,56 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting PokeBot!");
     debug!("Received CLI arguments: {:?}", std::env::args());
 
-    tokio::run(
-        async {
-            if bot_args.local {
-                let name = bot_args.names[0].clone();
-                let id = bot_args.ids[0].clone();
+    tokio::runtime::Runtime::new()?
+        .block_on(
+            async {
+                if bot_args.local {
+                    let name = bot_args.names[0].clone();
+                    let id = bot_args.ids[0].clone();
 
-                let disconnect_cb = Box::new(move |_, _, _| {});
+                    let disconnect_cb = Box::new(move |_, _, _| {});
 
-                let bot_args = MusicBotArgs {
-                    name: name,
-                    name_index: 0,
-                    id_index: 0,
-                    local: true,
-                    address: bot_args.address.clone(),
-                    id,
-                    channel: String::from("local"),
-                    verbose: bot_args.verbose,
-                    disconnect_cb,
-                };
-                MusicBot::new(bot_args).await.1.await;
-            } else {
-                let domain = bot_args.domain.clone();
-                let bind_address = bot_args.bind_address.clone();
-                let (bot, fut) = MasterBot::new(bot_args).await;
-
-                thread::spawn(|| {
-                    let web_args = web_server::WebServerArgs {
-                        domain,
-                        bind_address,
-                        bot,
+                    let bot_args = MusicBotArgs {
+                        name: name,
+                        name_index: 0,
+                        id_index: 0,
+                        local: true,
+                        address: bot_args.address.clone(),
+                        id,
+                        channel: String::from("local"),
+                        verbose: bot_args.verbose,
+                        disconnect_cb,
                     };
-                    if let Err(e) = web_server::start(web_args) {
-                        error!("Error in web server: {}", e);
-                    }
-                });
+                    MusicBot::new(bot_args).await.1.await;
+                } else {
+                    let domain = bot_args.domain.clone();
+                    let bind_address = bot_args.bind_address.clone();
+                    let (bot, fut) = MasterBot::new(bot_args).await;
 
-                fut.await;
+                    thread::spawn(|| {
+                        let web_args = web_server::WebServerArgs {
+                            domain,
+                            bind_address,
+                            bot,
+                        };
+                        if let Err(e) = web_server::start(web_args) {
+                            error!("Error in web server: {}", e);
+                        }
+                    });
+
+                    fut.await;
+                    // Keep tokio running while the bot disconnects
+                    tokio::timer::Delay::new(Instant::now() + Duration::from_secs(1))
+                        .compat()
+                        .await
+                        .expect("Failed to wait for delay");
+                }
             }
-        }
-        .unit_error()
-        .boxed()
-        .compat(),
-    );
+            .unit_error()
+            .boxed()
+            .compat(),
+        )
+        .expect("Runtime exited on an error");
 
     Ok(())
 }

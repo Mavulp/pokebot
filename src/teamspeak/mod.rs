@@ -1,5 +1,4 @@
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant};
 
 use futures::compat::Future01CompatExt;
 use futures01::{future::Future, sink::Sink};
@@ -223,10 +222,6 @@ impl TeamSpeakConnection {
             self.conn
                 .disconnect(opt)
                 .map_err(|e| error!("Failed to send message: {}", e)),
-        );
-        // Might or might not be required to keep tokio running while the bot disconnects
-        tokio::spawn(
-            tokio::timer::Delay::new(Instant::now() + Duration::from_secs(1)).map_err(|_| ()),
         );
     }
 }
