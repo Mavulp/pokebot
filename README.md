@@ -21,3 +21,22 @@ OPTIONS:
 ARGS:
     <config_path>    Configuration file [default: config.toml]
 ```
+# Usage
+
+ 1. Poke the main bot.
+ 2. Once the secondary bot joins your channel, type !help for a list of commands.
+ 
+ **Chat commands:**
+ ```
+    add       Adds url to playlist
+    clear     Clears the playback queue
+    help      Prints this message or the help of the given subcommand(s)
+    leave     Leaves the channel
+    next      Switches to the next queue entry
+    pause     Pauses audio playback
+    play      Starts audio playback
+    search    Adds the first video found on YouTube
+    seek      Seeks by a specified amount
+    stop      Stops audio playback
+    volume    Changes the volume to the specified value
+ ```
