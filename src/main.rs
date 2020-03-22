@@ -32,6 +32,9 @@ pub struct Args {
         help = "Generate 'count' identities"
     )]
     gen_id_count: Option<u8>,
+    /// Increases the security level of all identities in the config file
+    #[structopt(short, long = "increase-security-level")]
+    wanted_level: Option<u8>,
     #[structopt(
         short = "a",
         long = "address",
@@ -93,6 +96,27 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 ids.push(id);
             } else {
                 config.ids = Some(vec![id]);
+            }
+        }
+
+        let toml = toml::to_string(&config)?;
+        let mut file = File::create(&args.config_path)?;
+        file.write_all(toml.as_bytes())?;
+
+        return Ok(());
+    }
+
+    if let Some(level) = args.wanted_level {
+        if let Some(id) = &mut config.id {
+            info!("Upgrading master identity");
+            id.upgrade_level(level).expect("can upgrade level");
+        }
+
+        if let Some(ids) = &mut config.ids {
+            let len = ids.len();
+            for (i, id) in ids.iter_mut().enumerate() {
+                info!("Upgrading bot identity {}/{}", i + 1, len);
+                id.upgrade_level(level).expect("can upgrade level");
             }
         }
 
