@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use structopt::clap::AppSettings::*;
 use structopt::StructOpt;
-use log::debug;
 
 #[derive(StructOpt, Debug)]
 #[structopt(

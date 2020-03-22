@@ -11,12 +11,3 @@ bind_address = "127.0.0.1:45538"
 
 # Names for the music bots
 names = ["MusicBot"]
-
-# Identity of the master bot
-[id]
-key = "insert-key-here"
-counter = 0
-max_counter = 0
-
-# Add identities for music bots here
-# [[ids]]
