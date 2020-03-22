@@ -40,7 +40,7 @@ impl MasterBot {
         let mut con_config = ConnectOptions::new(args.address.clone())
             .version(tsclientlib::Version::Linux_3_3_2)
             .name(args.master_name.clone())
-            .identity(args.id)
+            .identity(args.id.expect("identity should exist"))
             .log_commands(args.verbose >= 1)
             .log_packets(args.verbose >= 2)
             .log_udp_packets(args.verbose >= 3);
@@ -59,7 +59,7 @@ impl MasterBot {
             master_name: args.master_name,
             address: args.address,
             names: args.names,
-            ids: args.ids,
+            ids: args.ids.expect("identies should exists"),
             local: args.local,
             verbose: args.verbose,
         });
@@ -283,8 +283,8 @@ pub struct MasterArgs {
     pub domain: String,
     pub bind_address: String,
     pub names: Vec<String>,
-    pub id: Identity,
-    pub ids: Vec<Identity>,
+    pub id: Option<Identity>,
+    pub ids: Option<Vec<Identity>>,
 }
 
 fn default_name() -> String {

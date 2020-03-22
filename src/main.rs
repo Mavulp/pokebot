@@ -81,16 +81,30 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut config: MasterArgs = toml::from_str(&toml)?;
 
+    if config.id.is_none() {
+        let id = Identity::create().expect("Failed to create id");
+        config.id = Some(id);
+    }
+
     if let Some(count) = args.gen_id_count {
         for _ in 0..count {
             let id = Identity::create().expect("Failed to create id");
-            config.ids.push(id);
+            if let Some(ids) = &mut config.ids {
+                ids.push(id);
+            } else {
+                config.ids = Some(vec![id]);
+            }
         }
 
         let toml = toml::to_string(&config)?;
         let mut file = File::create(&args.config_path)?;
         file.write_all(toml.as_bytes())?;
 
+        return Ok(());
+    }
+
+    if config.id.is_none() || config.ids.is_none() {
+        error!("Failed to find required identites, try running with `-g`");
         return Ok(());
     }
 
@@ -104,7 +118,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             async {
                 if bot_args.local {
                     let name = bot_args.names[0].clone();
-                    let id = bot_args.ids[0].clone();
+                    let id = bot_args.ids.expect("identies should exists")[0].clone();
 
                     let disconnect_cb = Box::new(move |_, _, _| {});
 
