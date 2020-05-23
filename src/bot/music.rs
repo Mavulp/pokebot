@@ -262,13 +262,13 @@ impl MusicBot {
     }
 
     fn set_nickname(&self, name: &str) {
-        info!("Setting TeamsSpeak nickname to {}", name);
+        info!("Setting TeamSpeak nickname: {}", name);
 
         self.with_teamspeak(|ts| ts.set_nickname(name));
     }
 
     fn set_description(&self, desc: &str) {
-        info!("Setting TeamsSpeak description to {}", desc);
+        info!("Setting TeamSpeak description: {}", desc);
 
         self.with_teamspeak(|ts| ts.set_description(desc));
     }
