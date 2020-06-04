@@ -27,7 +27,7 @@ pub enum Command {
     Seek { amount: Seek },
     /// Stops audio playback
     Stop,
-    /// Switches to the next queue entry
+    /// Switches to the next playlist entry
     #[structopt(alias = "skip")]
     Next,
     /// Clears the playback queue

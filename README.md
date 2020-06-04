@@ -33,7 +33,7 @@ ARGS:
     clear     Clears the playback queue
     help      Prints this message or the help of the given subcommand(s)
     leave     Leaves the channel
-    next      Switches to the next queue entry
+    next      Switches to the next playlist entry
     pause     Pauses audio playback
     play      Starts audio playback
     search    Adds the first video found on YouTube
