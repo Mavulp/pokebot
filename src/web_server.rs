@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use actix::{Addr, SyncArbiter};
 use actix_web::{
-    get, http::header, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder,
+    get, middleware::Logger, post, web, App, HttpServer, Responder,
 };
 use askama::actix_web::TemplateIntoResponse;
 use askama::Template;
@@ -91,8 +91,8 @@ async fn get_bot(
     front: FrontEnd,
 ) -> impl Responder {
     match front {
+        FrontEnd::Default => default::get_bot(bot, name.into_inner()).await,
         FrontEnd::Tmtu => tmtu::get_bot(bot, name.into_inner()).await,
-        FrontEnd::Default => Ok(HttpResponse::Found().header(header::LOCATION, "/").finish()),
     }
 }
 

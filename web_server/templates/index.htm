@@ -13,24 +13,63 @@
   <a href="/docs/api">API</a>
 </nav>
 
-<ul>
-  {% for bot in bots %}
+<nav>
+  <ul>
+      {% let bot_name %}
+      {% match bot %}
+        {% when Some with (bot) %}
+          {% let bot_name = bot.name.clone() %}
+        {% when None %}
+          {% let bot_name = "".to_owned() %}
+      {% endmatch %}
+    {% for name in bot_names %}
+      {% if name.clone() == bot_name %}
+        <li><a href="/bot/{{ name }}" class="botname selected">{{ name }}</a></li>
+      {% else %}
+        <li><a href="/bot/{{ name }}" class="botname">{{ name }}</a></li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+</nav>
+{% match bot %}
+  {% when Some with (bot) %}
     <h2>{{ bot.name }}</h1>
     <div>State: {{ bot.state }}</div>
     <div>Volume: {{ bot.volume * 100.0 }}%</div>
     {% match bot.currently_playing %}
       {% when Some with (current) %}
-        <span>Currently playing:</span>
-        {% let item = current %}
-        {% include "song.htm" %}
+        <h3>Currently playing:</h3>
+        {% match current.thumbnail %}
+          {% when Some with (thumbnail) %}
+            <img src="{{ thumbnail }}" class="thumbnail">
+          {% when None %}
+        {% endmatch %}
+        <a href="{{ current.webpage_url }}">{{ current.title }}</a>
+        <span>({{ current.duration|fmt_duration }})</span>
       {% when None %}
     {% endmatch %}
 
-    {% for item in bot.playlist %}
-      <li>
-        {% include "song.htm" %}
-      </li>
-    {% endfor %}
-  {% endfor %}
-</ul>
+    <h3>Playlist</h3>
+    <table class="tracktable" cellspacing="0" cellpadding="0">
+      <tr class="tableheader">
+        <td class="stat">#</td>
+        <td>track</td>
+        <td>length</td>
+        <td>added by</td>
+      </tr>
+      {% for item in bot.playlist %}
+      <tr>
+        <td class="stat">{{ loop.index }}</td>
+        <td><a href="{{ item.webpage_url }}">{{ item.title }}</a></td>
+        <td>
+          {% let duration = item.duration %}
+          {{ duration|fmt_duration }}
+        </td>
+        <td>{{ item.added_by }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    </ul>
+  {% when None %}
+  {% endmatch %}
 {% endblock %}

@@ -38,6 +38,48 @@ a:hover {
   color: #ccc;
 }
 
+.thumbnail {
+  display: block;
+  max-height: 256px;
+  max-width: 512px;
+}
+
+/*
+ * Playlist table
+ */
+
+td {
+  padding-right: 16px;
+  padding-top: 1px;
+  padding-bottom: : 1px;
+}
+
+td, th {
+  vertical-align:top;
+}
+
+.tableheader td {
+  color: #918f8f;
+  border-bottom: 1px solid #3f4077;
+}
+
+.stat {
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 8px
+}
+
+.tracktable {
+    border-left: 1px solid #3f4077;
+}
+
+.tracktable tr:hover {
+    background-color: #163037;
+}
+
+/*
+ * API Docs
+ */
 pre {
   font-size: 0.9rem;
   font-family: monospace;
