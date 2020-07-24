@@ -187,11 +187,18 @@ impl MasterBot {
     }
 
     async fn on_message(&self, message: MusicBotMessage) -> Result<(), AudioPlayerError> {
-        if let MusicBotMessage::TextMessage(message) = message {
-            if let MessageTarget::Poke(who) = message.target {
-                info!("Poked by {}, creating bot for their channel", who);
-                self.spawn_bot_for(who).await;
+        match message {
+            MusicBotMessage::TextMessage(message) => {
+                if let MessageTarget::Poke(who) = message.target {
+                    info!("Poked by {}, creating bot for their channel", who);
+                    self.spawn_bot_for(who).await;
+                }
             }
+            MusicBotMessage::ChannelCreated(_) => {
+                // TODO Only subscribe to one channel
+                self.teamspeak.subscribe_all();
+            }
+            _ => (),
         }
 
         Ok(())

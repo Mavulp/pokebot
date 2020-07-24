@@ -13,10 +13,10 @@ use tsclientlib::{data, ChannelId, ClientId, ConnectOptions, Identity, Invoker, 
 
 use crate::audio_player::{AudioPlayer, AudioPlayerError, PollResult};
 use crate::command::Command;
+use crate::command::VolumeChange;
 use crate::playlist::Playlist;
 use crate::teamspeak as ts;
 use crate::youtube_dl::AudioMetadata;
-use crate::command::VolumeChange;
 use ts::TeamSpeakConnection;
 
 #[derive(Debug)]
@@ -53,6 +53,7 @@ pub enum MusicBotMessage {
         client: ClientId,
         old_channel: ChannelId,
     },
+    ChannelCreated(ChannelId),
     ClientDisconnected {
         id: ClientId,
         client: data::Client,
@@ -175,7 +176,11 @@ impl MusicBot {
             format!("")
         };
 
-        self.send_message(&format!("Playing {} {}", ts::underline(&metadata.title), duration));
+        self.send_message(&format!(
+            "Playing {} {}",
+            ts::underline(&metadata.title),
+            duration
+        ));
         self.set_description(&format!("Currently playing '{}'", metadata.title));
         self.player.reset().unwrap();
         self.player.set_metadata(metadata).unwrap();
@@ -273,6 +278,10 @@ impl MusicBot {
         self.with_teamspeak(|ts| ts.set_description(desc));
     }
 
+    fn subscribe_all(&self) {
+        self.with_teamspeak(|ts| ts.subscribe_all());
+    }
+
     async fn on_text(&self, message: Message) -> Result<(), AudioPlayerError> {
         let msg = message.text;
         if msg.starts_with("!") {
@@ -310,7 +319,8 @@ impl MusicBot {
                 self.add_audio(url.to_string(), invoker.name).await;
             }
             Command::Search { query } => {
-                self.add_audio(format!("ytsearch:{}", query.join(" ")), invoker.name).await;
+                self.add_audio(format!("ytsearch:{}", query.join(" ")), invoker.name)
+                    .await;
             }
             Command::Pause => {
                 self.player.pause()?;
@@ -414,6 +424,10 @@ impl MusicBot {
             MusicBotMessage::ClientDisconnected { id: _, client } => {
                 let old_channel = client.channel;
                 self.on_client_left_channel(old_channel);
+            }
+            MusicBotMessage::ChannelCreated(_) => {
+                // TODO Only subscribe to one channel
+                self.subscribe_all();
             }
             MusicBotMessage::StateChange(state) => {
                 self.on_state(state)?;

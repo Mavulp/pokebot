@@ -35,6 +35,15 @@ fn get_message<'a>(event: &Event) -> Option<MusicBotMessage> {
             invoker: sender.clone(),
             text: msg.clone(),
         })),
+        Event::PropertyAdded {
+            id: property,
+            invoker: _,
+        } => match property {
+            PropertyId::Channel(id) => {
+                Some(MusicBotMessage::ChannelCreated(*id))
+            }
+            _ => None,
+        },
         Event::PropertyChanged {
             id: property,
             old: from,
@@ -188,7 +197,7 @@ impl TeamSpeakConnection {
                 .lock()
                 .to_mut()
                 .get_client(&self.conn.lock().own_client)
-                .expect("Can get myself")
+                .expect("can get myself")
                 .set_description(desc)
                 .map_err(|e| error!("Failed to change description: {}", e)),
         );
@@ -204,13 +213,22 @@ impl TeamSpeakConnection {
         );
     }
 
-    pub fn send_message_to_user(&self, id: ClientId, text: &str) {
+    pub fn send_message_to_user(&self, client: ClientId, text: &str) {
         tokio::spawn(
             self.conn
                 .lock()
                 .to_mut()
-                .send_message(MessageTarget::Client(id), text)
+                .send_message(MessageTarget::Client(client), text)
                 .map_err(|e| error!("Failed to send message: {}", e)),
+        );
+    }
+
+    pub fn subscribe_all(&self) {
+        let packet = self.conn.lock().to_mut().server.set_subscribed(true);
+        tokio::spawn(
+            self.conn
+                .send_packet(packet)
+                .map_err(|e| error!("Failed to send subscribe packet: {}", e)),
         );
     }
 
