@@ -1,8 +1,7 @@
 use std::time::Duration;
 
-use futures::compat::Future01CompatExt;
-use std::process::{Command, Stdio};
-use tokio_process::CommandExt;
+use std::process::Stdio;
+use tokio::process::Command;
 
 use serde::{Deserialize, Serialize};
 
@@ -38,7 +37,7 @@ pub async fn get_audio_download_url(uri: String) -> Result<AudioMetadata, String
 
     debug!("yt-dl command: {:?}", cmd);
 
-    let ytdl_output = cmd.output_async().compat().await.unwrap();
+    let ytdl_output = cmd.output().await.unwrap();
 
     if !ytdl_output.status.success() {
         return Err(String::from_utf8(ytdl_output.stderr).unwrap());
