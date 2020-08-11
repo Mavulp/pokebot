@@ -19,6 +19,7 @@ mod bbcode;
 pub use bbcode::*;
 
 pub struct TeamSpeakConnection {
+    id: ClientId,
     conn: Connection,
 }
 
@@ -106,7 +107,8 @@ impl TeamSpeakConnection {
             }),
         );
 
-        Ok(TeamSpeakConnection { conn })
+        let id = conn.lock().own_client;
+        Ok(TeamSpeakConnection { conn, id })
     }
 
     pub fn send_audio_packet(&self, samples: &[u8]) {
@@ -167,6 +169,10 @@ impl TeamSpeakConnection {
             .get(&conn.own_client)
             .expect("can find myself")
             .channel
+    }
+
+    pub fn my_id(&self) -> ClientId {
+        self.id
     }
 
     pub fn user_count(&self, channel: ChannelId) -> u32 {
