@@ -4,7 +4,6 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use humantime;
 use log::{debug, info};
 use serde::Serialize;
 use structopt::StructOpt;
@@ -56,7 +55,7 @@ pub enum MusicBotMessage {
     ChannelCreated(ChannelId),
     ClientDisconnected {
         id: ClientId,
-        client: data::Client,
+        client: Box<data::Client>,
     },
     StateChange(State),
     Quit(String),
@@ -284,7 +283,7 @@ impl MusicBot {
 
     async fn on_text(&self, message: Message) -> Result<(), AudioPlayerError> {
         let msg = message.text;
-        if msg.starts_with("!") {
+        if msg.starts_with('!') {
             let tokens = msg[1..].split_whitespace().collect::<Vec<_>>();
 
             match Command::from_iter_safe(&tokens) {

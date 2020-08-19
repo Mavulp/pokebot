@@ -26,7 +26,7 @@ where
 {
     let dur: Option<f64> = Deserialize::deserialize(deserializer)?;
 
-    Ok(dur.map(|v| Duration::from_secs_f64(v)))
+    Ok(dur.map(Duration::from_secs_f64))
 }
 
 pub async fn get_audio_download_url(uri: String) -> Result<AudioMetadata, String> {
@@ -40,11 +40,11 @@ pub async fn get_audio_download_url(uri: String) -> Result<AudioMetadata, String
 
     let ytdl_output = cmd.output_async().compat().await.unwrap();
 
-    if ytdl_output.status.success() == false {
-        return Err(String::from_utf8(ytdl_output.stderr.clone()).unwrap());
+    if !ytdl_output.status.success() {
+        return Err(String::from_utf8(ytdl_output.stderr).unwrap());
     }
 
-    let output_str = String::from_utf8(ytdl_output.stdout.clone()).unwrap();
+    let output_str = String::from_utf8(ytdl_output.stdout).unwrap();
     let output = serde_json::from_str(&output_str).map_err(|e| e.to_string())?;
 
     Ok(output)

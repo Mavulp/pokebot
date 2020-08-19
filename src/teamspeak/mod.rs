@@ -22,7 +22,7 @@ pub struct TeamSpeakConnection {
     conn: Connection,
 }
 
-fn get_message<'a>(event: &Event) -> Option<MusicBotMessage> {
+fn get_message(event: &Event) -> Option<MusicBotMessage> {
     use tsclientlib::events::{PropertyId, PropertyValue};
 
     match event {
@@ -39,9 +39,7 @@ fn get_message<'a>(event: &Event) -> Option<MusicBotMessage> {
             id: property,
             invoker: _,
         } => match property {
-            PropertyId::Channel(id) => {
-                Some(MusicBotMessage::ChannelCreated(*id))
-            }
+            PropertyId::Channel(id) => Some(MusicBotMessage::ChannelCreated(*id)),
             _ => None,
         },
         Event::PropertyChanged {
@@ -70,7 +68,7 @@ fn get_message<'a>(event: &Event) -> Option<MusicBotMessage> {
                 if let PropertyValue::Client(client) = client {
                     Some(MusicBotMessage::ClientDisconnected {
                         id: *id,
-                        client: client.clone(),
+                        client: Box::new(client.clone()),
                     })
                 } else {
                     None
@@ -172,7 +170,7 @@ impl TeamSpeakConnection {
     pub fn user_count(&self, channel: ChannelId) -> u32 {
         let conn = self.conn.lock();
         let mut count = 0;
-        for (_, client) in &conn.clients {
+        for client in conn.clients.values() {
             if client.channel == channel {
                 count += 1;
             }

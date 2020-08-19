@@ -119,7 +119,7 @@ impl MasterBot {
             ref connected_bots,
         } = &mut *self.music_bots.write().expect("RwLock was not poisoned");
 
-        for (_, bot) in connected_bots {
+        for bot in connected_bots.values() {
             if bot.my_channel() == channel {
                 return Err(BotCreationError::MultipleBots(bot.name().to_owned()));
             }
@@ -209,7 +209,7 @@ impl MasterBot {
         let bot = music_bots.connected_bots.get(&name)?;
 
         Some(crate::web_server::BotData {
-            name: name,
+            name,
             state: bot.state(),
             volume: bot.volume(),
             position: bot.position(),
@@ -244,7 +244,7 @@ impl MasterBot {
 
         let len = music_bots.connected_bots.len();
         let mut result = Vec::with_capacity(len);
-        for (name, _) in &music_bots.connected_bots {
+        for name in music_bots.connected_bots.keys() {
             result.push(name.clone());
         }
 
@@ -253,7 +253,7 @@ impl MasterBot {
 
     pub fn quit(&self, reason: String) {
         let music_bots = self.music_bots.read().unwrap();
-        for (_, bot) in &music_bots.connected_bots {
+        for bot in music_bots.connected_bots.values() {
             bot.quit(reason.clone())
         }
         let sender = self.sender.read().unwrap();

@@ -147,7 +147,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     let disconnect_cb = Box::new(move |_, _, _| {});
 
                     let bot_args = MusicBotArgs {
-                        name: name,
+                        name,
                         name_index: 0,
                         id_index: 0,
                         local: true,

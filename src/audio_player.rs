@@ -13,8 +13,8 @@ use log::{debug, error, info, warn};
 use std::sync::{Arc, RwLock};
 use tokio02::sync::mpsc::UnboundedSender;
 
-use crate::youtube_dl::AudioMetadata;
 use crate::command::{Seek, VolumeChange};
+use crate::youtube_dl::AudioMetadata;
 
 static GST_INIT: Once = Once::new();
 
@@ -63,18 +63,15 @@ fn add_decode_bin_new_pad_callback(
             None
         };
 
-        match name.as_deref() {
-            Some("audio/x-raw") => {
-                if let Some(peer) = ghost_pad.get_peer() {
-                    peer.unlink(&ghost_pad).unwrap();
-                }
-
-                info!("Found raw audio, linking audio bin");
-                new_pad.link(&ghost_pad).unwrap();
-
-                audio_bin.sync_state_with_parent().unwrap();
+        if let Some("audio/x-raw") = name.as_deref() {
+            if let Some(peer) = ghost_pad.get_peer() {
+                peer.unlink(&ghost_pad).unwrap();
             }
-            _ => {}
+
+            info!("Found raw audio, linking audio bin");
+            new_pad.link(&ghost_pad).unwrap();
+
+            audio_bin.sync_state_with_parent().unwrap();
         }
     });
 }
@@ -233,7 +230,7 @@ impl AudioPlayer {
     pub fn position(&self) -> Option<Duration> {
         self.pipeline
             .query_position::<gst::ClockTime>()
-            .and_then(|t| t.0.map(|v| Duration::from_nanos(v)))
+            .and_then(|t| t.0.map(Duration::from_nanos))
     }
 
     pub fn currently_playing(&self) -> Option<AudioMetadata> {
@@ -313,9 +310,10 @@ impl AudioPlayer {
     pub fn quit(&self, reason: String) {
         info!("Quitting audio player");
 
-        if let Err(_) = self
+        if self
             .bus
             .post(&gst::Message::new_application(gst::Structure::new_empty("quit")).build())
+            .is_err()
         {
             warn!("Tried to send \"quit\" app event on flushing bus.");
         }

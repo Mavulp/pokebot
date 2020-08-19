@@ -2,9 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use actix::{Addr, SyncArbiter};
-use actix_web::{
-    get, middleware::Logger, post, web, App, HttpServer, Responder,
-};
+use actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder};
 use askama::actix_web::TemplateIntoResponse;
 use askama::Template;
 use serde::{Deserialize, Serialize};
