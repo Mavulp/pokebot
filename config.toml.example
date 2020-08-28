@@ -1,8 +1,12 @@
 # Name of the master bot
 master_name = "PokeBot"
+
 # Address of the server to connect to
 address = "localhost"
+
 # Channel for the master bot
+#
+# This uses the same format as bookmarks in the TeamSpeak 3 client.
 channel = "Lobby"
 
 # Web server settings
