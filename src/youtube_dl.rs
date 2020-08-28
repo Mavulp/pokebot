@@ -9,7 +9,8 @@ use slog::{debug, Logger};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AudioMetadata {
-    pub url: String,
+    #[serde(rename = "url")]
+    pub uri: String,
     pub webpage_url: String,
     pub title: String,
     pub thumbnail: Option<String>,

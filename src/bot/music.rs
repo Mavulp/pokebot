@@ -1,10 +1,12 @@
-use async_trait::async_trait;
+use std::path::PathBuf;
 
 use serde::Serialize;
 use slog::{debug, info, warn, Logger};
 use structopt::StructOpt;
 use tsclientlib::{data, ChannelId, ClientId, Connection, Identity, Invoker, MessageTarget};
 use xtra::{spawn::Tokio, Actor, Address, Context, Handler, Message, WeakAddress};
+use async_trait::async_trait;
+use anyhow::anyhow;
 
 use crate::audio_player::AudioPlayer;
 use crate::bot::{BotDisonnected, Connect, MasterBot, Quit};
@@ -12,7 +14,7 @@ use crate::command::Command;
 use crate::command::VolumeChange;
 use crate::playlist::Playlist;
 use crate::teamspeak as ts;
-use crate::youtube_dl::{self, AudioMetadata};
+use crate::youtube_dl::AudioMetadata;
 use ts::TeamSpeakConnection;
 
 #[derive(Debug)]
@@ -171,40 +173,70 @@ impl MusicBot {
         Ok(())
     }
 
-    pub async fn add_audio(&mut self, url: String, user: String) -> anyhow::Result<()> {
-        match youtube_dl::get_audio_download_from_url(url, &self.logger).await {
-            Ok(mut metadata) => {
-                metadata.added_by = user;
-                info!(self.logger, "Found source"; "url" => &metadata.url);
+    pub async fn add_audio(&mut self, uri: String, user: String) -> anyhow::Result<()> {
+        let metadata = if uri.starts_with("file://") {
+            // TODO Add to config file
+            let root_path = "/";
+            let path = PathBuf::from(root_path);
+            let path = path.join(&uri[7..]);
+            let path = match path.canonicalize() {
+                Ok(p) => p,
+                Err(e) => {
+                    self.send_message(format!("Invalid path: {}", e)).await?;
+                    return Err(e)?;
+                }
+            };
 
-                self.playlist.push(metadata.clone());
+            // Make sure files outside of the root path can't be accessed
+            if !path.starts_with(root_path) {
+                self.send_message(String::from("Invalid path")).await?;
+                return Err(anyhow!("Invalid path"));
+            }
 
-                if !self.player.is_started() {
-                    let entry = self.playlist.pop();
-                    if let Some(request) = entry {
-                        self.start_playing_audio(request).await?;
-                    }
-                } else {
-                    let duration = if let Some(duration) = metadata.duration {
-                        format!(" ({})", ts::bold(&humantime::format_duration(duration)))
-                    } else {
-                        format!("")
-                    };
+            AudioMetadata {
+                uri: format!("file://{}", path.to_string_lossy()),
+                webpage_url: String::new(),
+                title: path.file_name().unwrap().to_string_lossy().to_string(),
+                thumbnail: None,
+                duration: None,
+                added_by: user,
+            }
 
-                    self.send_message(format!(
-                        "Added {}{} to playlist",
-                        ts::underline(&metadata.title),
-                        duration
-                    ))
-                    .await?;
+        } else {
+            match crate::youtube_dl::get_audio_download_from_url(uri, &self.logger).await {
+                Ok(mut metadata) => {
+                    metadata.added_by = user;
+                    info!(self.logger, "Found source"; "uri" => &metadata.uri);
+
+                    metadata
+                }
+                Err(e) => {
+                    info!(self.logger, "Failed to find audio url"; "error" => &e);
+                    self.send_message(format!("Failed to find url: {}", e)).await?;
+
+                    return Err(anyhow!(e))?;
                 }
             }
-            Err(e) => {
-                info!(self.logger, "Failed to find audio url"; "error" => &e);
+        };
 
-                self.send_message(format!("Failed to find url: {}", e))
-                    .await?;
+        self.playlist.push(metadata.clone());
+
+        if !self.player.is_started() {
+            if let Some(request) = self.playlist.pop() {
+                self.start_playing_audio(request).await?;
             }
+        } else {
+            let duration = if let Some(duration) = metadata.duration {
+                format!(" ({})", ts::bold(&humantime::format_duration(duration)))
+            } else {
+                format!("")
+            };
+
+            self.send_message(format!(
+                "Added {}{} to playlist",
+                ts::underline(&metadata.title),
+                duration
+            )).await?;
         }
 
         Ok(())
@@ -292,9 +324,9 @@ impl MusicBot {
             }
             Command::Add { url } => {
                 // strip bbcode tags from url
-                let url = url.replace("[URL]", "").replace("[/URL]", "");
+                let url = url.join(" ").replace("[URL]", "").replace("[/URL]", "");
 
-                self.add_audio(url.to_string(), invoker.name).await?;
+                self.add_audio(url, invoker.name).await?;
             }
             Command::Search { query } => {
                 self.add_audio(format!("ytsearch:{}", query.join(" ")), invoker.name)
