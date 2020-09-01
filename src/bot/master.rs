@@ -88,11 +88,19 @@ impl MasterBot {
         let msg_loop = async move {
             'outer: loop {
                 while let Some(msg) = rx.recv().await {
-                    if let MusicBotMessage::Quit(reason) = msg {
-                        cbot.teamspeak.disconnect(&reason);
-                        break 'outer;
+                    match msg {
+                        MusicBotMessage::Quit(reason) => {
+                            cbot.teamspeak.disconnect(&reason);
+                            break 'outer;
+                        }
+                        MusicBotMessage::ClientDisconnected { id, .. } => {
+                            if id == cbot.my_id() {
+                                // TODO Reconnect since quit was not called
+                                break 'outer;
+                            }
+                        },
+                        _ => cbot.on_message(msg).await.unwrap(),
                     }
-                    cbot.on_message(msg).await.unwrap();
                 }
             }
         };
@@ -202,6 +210,10 @@ impl MasterBot {
         }
 
         Ok(())
+    }
+
+    fn my_id(&self) -> ClientId {
+        self.teamspeak.my_id()
     }
 
     pub fn bot_data(&self, name: String) -> Option<crate::web_server::BotData> {
