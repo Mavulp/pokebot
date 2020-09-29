@@ -2,12 +2,10 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, RwLock};
 
-use futures::future::{FutureExt, TryFutureExt};
-use futures01::future::Future as Future01;
 use log::info;
 use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 use serde::{Deserialize, Serialize};
-use tokio02::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::UnboundedSender;
 use tsclientlib::{ClientId, ConnectOptions, Identity, MessageTarget};
 
 use crate::audio_player::AudioPlayerError;
@@ -20,7 +18,7 @@ use crate::bot::{MusicBot, MusicBotArgs, MusicBotMessage};
 pub struct MasterBot {
     config: Arc<MasterConfig>,
     music_bots: Arc<RwLock<MusicBots>>,
-    teamspeak: Arc<TeamSpeakConnection>,
+    teamspeak: TeamSpeakConnection,
     sender: Arc<RwLock<UnboundedSender<MusicBotMessage>>>,
 }
 
@@ -33,7 +31,7 @@ struct MusicBots {
 
 impl MasterBot {
     pub async fn new(args: MasterArgs) -> (Arc<Self>, impl Future) {
-        let (tx, mut rx) = tokio02::sync::mpsc::unbounded_channel();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let tx = Arc::new(RwLock::new(tx));
         info!("Starting in TeamSpeak mode");
 
@@ -49,11 +47,9 @@ impl MasterBot {
             con_config = con_config.channel(channel);
         }
 
-        let connection = Arc::new(
-            TeamSpeakConnection::new(tx.clone(), con_config)
-                .await
-                .unwrap(),
-        );
+        let connection = TeamSpeakConnection::new(tx.clone(), con_config)
+            .await
+            .unwrap();
 
         let config = Arc::new(MasterConfig {
             master_name: args.master_name,
@@ -81,24 +77,22 @@ impl MasterBot {
             sender: tx.clone(),
         });
 
-        bot.teamspeak
-            .set_description("Poke me if you want a music bot!");
-
         let cbot = bot.clone();
         let msg_loop = async move {
             'outer: loop {
                 while let Some(msg) = rx.recv().await {
                     match msg {
                         MusicBotMessage::Quit(reason) => {
-                            cbot.teamspeak.disconnect(&reason);
+                            let mut cteamspeak = cbot.teamspeak.clone();
+                            cteamspeak.disconnect(&reason).await;
                             break 'outer;
                         }
                         MusicBotMessage::ClientDisconnected { id, .. } => {
-                            if id == cbot.my_id() {
+                            if id == cbot.my_id().await {
                                 // TODO Reconnect since quit was not called
                                 break 'outer;
                             }
-                        },
+                        }
                         _ => cbot.on_message(msg).await.unwrap(),
                     }
                 }
@@ -108,13 +102,14 @@ impl MasterBot {
         (bot, msg_loop)
     }
 
-    fn build_bot_args_for(&self, id: ClientId) -> Result<MusicBotArgs, BotCreationError> {
-        let channel = match self.teamspeak.channel_of_user(id) {
+    async fn build_bot_args_for(&self, id: ClientId) -> Result<MusicBotArgs, BotCreationError> {
+        let mut cteamspeak = self.teamspeak.clone();
+        let channel = match cteamspeak.channel_of_user(id).await {
             Some(channel) => channel,
             None => return Err(BotCreationError::UnfoundUser),
         };
 
-        if channel == self.teamspeak.my_channel() {
+        if channel == cteamspeak.my_channel().await {
             return Err(BotCreationError::MasterChannel(
                 self.config.master_name.clone(),
             ));
@@ -128,14 +123,14 @@ impl MasterBot {
         } = &mut *self.music_bots.write().expect("RwLock was not poisoned");
 
         for bot in connected_bots.values() {
-            if bot.my_channel() == channel {
+            if bot.my_channel().await == channel {
                 return Err(BotCreationError::MultipleBots(bot.name().to_owned()));
             }
         }
 
-        let channel_path = self
-            .teamspeak
+        let channel_path = cteamspeak
             .channel_path_of_user(id)
+            .await
             .expect("can find poke sender");
 
         available_names.shuffle(rng);
@@ -181,16 +176,19 @@ impl MasterBot {
     }
 
     async fn spawn_bot_for(&self, id: ClientId) {
-        match self.build_bot_args_for(id) {
+        match self.build_bot_args_for(id).await {
             Ok(bot_args) => {
                 let (bot, fut) = MusicBot::new(bot_args).await;
-                tokio::spawn(fut.unit_error().boxed().compat().map(|_| ()));
+                tokio::spawn(fut);
                 let mut music_bots = self.music_bots.write().expect("RwLock was not poisoned");
                 music_bots
                     .connected_bots
                     .insert(bot.name().to_string(), bot);
             }
-            Err(e) => self.teamspeak.send_message_to_user(id, &e.to_string()),
+            Err(e) => {
+                let mut cteamspeak = self.teamspeak.clone();
+                cteamspeak.send_message_to_user(id, e.to_string()).await
+            }
         }
     }
 
@@ -202,9 +200,19 @@ impl MasterBot {
                     self.spawn_bot_for(who).await;
                 }
             }
-            MusicBotMessage::ChannelCreated(_) => {
+            MusicBotMessage::ChannelAdded(_) => {
                 // TODO Only subscribe to one channel
-                self.teamspeak.subscribe_all();
+                let mut cteamspeak = self.teamspeak.clone();
+                cteamspeak.subscribe_all().await;
+            }
+            MusicBotMessage::ClientAdded(id) => {
+                let mut cteamspeak = self.teamspeak.clone();
+
+                if id == cteamspeak.my_id().await {
+                    cteamspeak
+                        .set_description(String::from("Poke me if you want a music bot!"))
+                        .await;
+                }
             }
             _ => (),
         }
@@ -212,8 +220,10 @@ impl MasterBot {
         Ok(())
     }
 
-    fn my_id(&self) -> ClientId {
-        self.teamspeak.my_id()
+    async fn my_id(&self) -> ClientId {
+        let mut cteamspeak = self.teamspeak.clone();
+
+        cteamspeak.my_id().await
     }
 
     pub fn bot_data(&self, name: String) -> Option<crate::web_server::BotData> {

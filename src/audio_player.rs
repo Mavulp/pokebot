@@ -11,7 +11,7 @@ use crate::bot::{MusicBotMessage, State};
 use glib::BoolError;
 use log::{debug, error, info, warn};
 use std::sync::{Arc, RwLock};
-use tokio02::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::command::{Seek, VolumeChange};
 use crate::youtube_dl::AudioMetadata;
@@ -144,7 +144,7 @@ impl AudioPlayer {
                 "audio/x-opus",
                 &[("channels", &(2i32)), ("rate", &(48_000i32))],
             )));
-            let callbacks = AppSinkCallbacks::new()
+            let callbacks = AppSinkCallbacks::builder()
                 .new_sample(move |sink| {
                     let sample = sink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
                     let buffer = sample.get_buffer().ok_or(gst::FlowError::Error)?;
@@ -169,7 +169,7 @@ impl AudioPlayer {
             gst::Element::link_many(&[&queue, &convert, &volume, &resample, &sink])?;
         };
 
-        let ghost_pad = GhostPad::new(Some("audio bin sink"), queue_sink_pad).unwrap();
+        let ghost_pad = GhostPad::with_target(Some("audio bin sink"), queue_sink_pad).unwrap();
         ghost_pad.set_active(true)?;
         audio_bin.add_pad(&ghost_pad)?;
 
@@ -302,7 +302,7 @@ impl AudioPlayer {
     pub fn stop_current(&self) -> Result<(), AudioPlayerError> {
         info!("Stopping pipeline, sending EOS");
 
-        self.bus.post(&gst::Message::new_eos().build())?;
+        self.bus.post(&gst::message::Eos::new())?;
 
         Ok(())
     }
@@ -312,7 +312,9 @@ impl AudioPlayer {
 
         if self
             .bus
-            .post(&gst::Message::new_application(gst::Structure::new_empty("quit")).build())
+            .post(&gst::message::Application::new(gst::Structure::new_empty(
+                "quit",
+            )))
             .is_err()
         {
             warn!("Tried to send \"quit\" app event on flushing bus.");

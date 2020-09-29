@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use actix::{Actor, Handler, Message, SyncContext};
+use actix::{Actor, Context, Handler, Message};
 
 use crate::bot::MasterBot;
 use crate::web_server::BotData;
@@ -8,7 +8,7 @@ use crate::web_server::BotData;
 pub struct BotExecutor(pub Arc<MasterBot>);
 
 impl Actor for BotExecutor {
-    type Context = SyncContext<Self>;
+    type Context = Context<Self>;
 }
 
 pub struct BotNameListRequest;

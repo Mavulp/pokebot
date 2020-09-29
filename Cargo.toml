@@ -8,36 +8,29 @@ license = "GPL-3.0-or-later"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tsclientlib = { git = "https://github.com/ReSpeak/tsclientlib" }
+tsclientlib = { git = "https://github.com/ReSpeak/tsclientlib", features = ["unstable"] }
 tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib" }
-log = "0.4.8"
-log4rs = "0.9"
-toml = "0.5.5"
-structopt = "0.2"
-humantime = "2.0"
+log = "0.4.11"
+log4rs = "0.13.0"
+toml = "0.5.6"
+structopt = "0.3.16"
+humantime = "2.0.1"
 
-tokio = "0.1"
-tokio-process = "0.2.4"
-tokio-signal = "0.2"
-# Changes enabled features on tsclientlib to fix errors on it
-tokio02 = { package = "tokio", version = "0.2.0", features = ["tcp", "io-util", "sync"] }
+tokio = { version = "0.2.22", features = ["tcp", "io-util", "sync", "process"] }
+futures = "0.3.5"
 
-futures01 = { package = "futures", version = "0.1.21" }
-futures-preview = { version = "=0.3.0-alpha.19", features = ["compat"] }
-
-futures-util = "0.3.1"
-
-glib = "0.9"
-gstreamer = "0.15.0"
-gstreamer-app = "0.15.0"
-gstreamer-audio = "0.15.0"
+glib = "0.10.1"
+gstreamer = "0.16.2"
+gstreamer-app = "0.16.0"
+gstreamer-audio = "0.16.2"
 byte-slice-cast = "0.3.5"
-serde_json = "1.0.44"
-serde = "1.0.104"
+serde_json = "1.0.57"
+serde = "1.0.114"
 actix = "0.9.0"
-actix-rt = "1.0.0"
+actix-rt = "1.1.1"
 actix-web = "2.0.0"
-actix-files = "0.2.1"
-askama = { version = "0.9.0", features = ["with-actix-web"] }
+actix-files = "0.2.2"
+askama = "0.10.3"
 rand = { version = "0.7.3", features = ["small_rng"] }
-derive_more = "0.99.2"
+derive_more = "0.99.9"
+askama_actix = "0.10.0"

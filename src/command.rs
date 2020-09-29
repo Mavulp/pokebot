@@ -7,12 +7,12 @@ use structopt::StructOpt;
 #[structopt(
     rename_all = "kebab-case",
     template = "{subcommands}",
-    raw(global_settings = "&[VersionlessSubcommands,
+    global_settings = &[VersionlessSubcommands,
                             DisableHelpFlags,
                             DisableVersion,
                             ColorNever,
                             NoBinaryName,
-                            AllowLeadingHyphen]",)
+                            AllowLeadingHyphen],
 )]
 pub enum Command {
     /// Adds url to playlist

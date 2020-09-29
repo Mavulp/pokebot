@@ -1,7 +1,7 @@
 use actix::Addr;
 use actix_web::{http::header, web, Error, HttpResponse};
-use askama::actix_web::TemplateIntoResponse;
 use askama::Template;
+use askama_actix::TemplateIntoResponse;
 
 use crate::web_server::{filters, BotData, BotDataRequest, BotExecutor, BotNameListRequest};
 

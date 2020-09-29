@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::{Addr, SyncArbiter};
+use actix::{Actor, Addr};
 use actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder};
-use askama::actix_web::TemplateIntoResponse;
 use askama::Template;
+use askama_actix::TemplateIntoResponse;
 use serde::{Deserialize, Serialize};
 
 use crate::bot::MasterBot;
@@ -27,7 +27,7 @@ pub struct WebServerArgs {
 #[actix_rt::main]
 pub async fn start(args: WebServerArgs) -> std::io::Result<()> {
     let cbot = args.bot.clone();
-    let bot_addr: Addr<BotExecutor> = SyncArbiter::start(4, move || BotExecutor(cbot.clone()));
+    let bot_addr: Addr<BotExecutor> = BotExecutor(cbot.clone()).start();
 
     HttpServer::new(move || {
         App::new()
