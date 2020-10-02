@@ -7,8 +7,7 @@ use tsclientlib::data::exts::{M2BClientEditExt, M2BClientUpdateExt};
 use tsclientlib::{
     events::Event,
     sync::{SyncConnection, SyncConnectionHandle, SyncStreamItem},
-    ChannelId, ClientId, ConnectOptions, Connection, DisconnectOptions, MessageTarget,
-    OutCommandExt, Reason,
+    ChannelId, ClientId, ConnectOptions, DisconnectOptions, MessageTarget, OutCommandExt, Reason,
 };
 
 use log::{debug, error};
@@ -91,7 +90,7 @@ impl TeamSpeakConnection {
         tx: Arc<RwLock<UnboundedSender<MusicBotMessage>>>,
         options: ConnectOptions,
     ) -> Result<TeamSpeakConnection, tsclientlib::Error> {
-        let conn = Connection::new(options)?;
+        let conn = options.connect()?;
         let conn = SyncConnection::from(conn);
         let mut handle = conn.get_handle();
 

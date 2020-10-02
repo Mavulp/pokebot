@@ -6,7 +6,7 @@ use log::info;
 use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
-use tsclientlib::{ClientId, ConnectOptions, Identity, MessageTarget};
+use tsclientlib::{ClientId, Connection, Identity, MessageTarget};
 
 use crate::audio_player::AudioPlayerError;
 use crate::teamspeak::TeamSpeakConnection;
@@ -35,7 +35,7 @@ impl MasterBot {
         let tx = Arc::new(RwLock::new(tx));
         info!("Starting in TeamSpeak mode");
 
-        let mut con_config = ConnectOptions::new(args.address.clone())
+        let mut con_config = Connection::build(args.address.clone())
             .version(tsclientlib::Version::Linux_3_3_2)
             .name(args.master_name.clone())
             .identity(args.id.expect("identity should exist"))

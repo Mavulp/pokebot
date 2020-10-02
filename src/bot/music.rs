@@ -8,7 +8,7 @@ use log::{debug, info};
 use serde::Serialize;
 use structopt::StructOpt;
 use tokio::sync::mpsc::UnboundedSender;
-use tsclientlib::{data, ChannelId, ClientId, ConnectOptions, Identity, Invoker, MessageTarget};
+use tsclientlib::{data, ChannelId, ClientId, Connection, Identity, Invoker, MessageTarget};
 
 use crate::audio_player::{AudioPlayer, AudioPlayerError, PollResult};
 use crate::command::Command;
@@ -94,7 +94,7 @@ impl MusicBot {
         } else {
             info!("Starting in TeamSpeak mode");
 
-            let con_config = ConnectOptions::new(args.address)
+            let con_config = Connection::build(args.address)
                 .version(tsclientlib::Version::Linux_3_3_2)
                 .name(format!("🎵 {}", args.name))
                 .identity(args.id)
