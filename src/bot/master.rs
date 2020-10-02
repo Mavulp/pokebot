@@ -200,10 +200,9 @@ impl MasterBot {
                     self.spawn_bot_for(who).await;
                 }
             }
-            MusicBotMessage::ChannelAdded(_) => {
-                // TODO Only subscribe to one channel
+            MusicBotMessage::ChannelAdded(id) => {
                 let mut cteamspeak = self.teamspeak.clone();
-                cteamspeak.subscribe_all().await;
+                cteamspeak.subscribe(id).await;
             }
             MusicBotMessage::ClientAdded(id) => {
                 let mut cteamspeak = self.teamspeak.clone();

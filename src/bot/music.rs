@@ -295,10 +295,10 @@ impl MusicBot {
         }
     }
 
-    async fn subscribe_all(&self) {
+    async fn subscribe(&self, id: ChannelId) {
         if let Some(ts) = &self.teamspeak {
             let mut ts = ts.clone();
-            ts.subscribe_all().await;
+            ts.subscribe(id).await;
         }
     }
 
@@ -446,9 +446,8 @@ impl MusicBot {
                 let old_channel = client.channel;
                 self.on_client_left_channel(old_channel).await;
             }
-            MusicBotMessage::ChannelAdded(_) => {
-                // TODO Only subscribe to one channel
-                self.subscribe_all().await;
+            MusicBotMessage::ChannelAdded(id) => {
+                self.subscribe(id).await;
             }
             MusicBotMessage::StateChange(state) => {
                 self.on_state(state).await?;
