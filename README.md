@@ -1,7 +1,7 @@
 # pokebot
 
 ```
-Amazing pokebot 0.2.0
+pokebot 0.2.0
 Jokler <jokler@protonmail.com>
 
 USAGE:
