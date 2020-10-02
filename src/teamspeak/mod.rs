@@ -300,16 +300,18 @@ impl TeamSpeakConnection {
             .unwrap()
     }
 
-    pub async fn subscribe_all(&mut self) {
+    pub async fn subscribe(&mut self, id: ChannelId) {
         self.handle
             .with_connection(move |mut conn| {
-                if let Err(e) = conn
-                    .get_state()
-                    .expect("can get state")
-                    .server
-                    .set_subscribed(true)
-                    .send(&mut conn)
-                {
+                let channel = match conn.get_state().expect("can get state").channels.get(&id) {
+                    Some(c) => c,
+                    None => {
+                        error!("Failed to find channel to subscribe to");
+                        return;
+                    }
+                };
+
+                if let Err(e) = channel.set_subscribed(true).send(&mut conn) {
                     error!("Failed to send subscribe packet: {}", e);
                 }
             })
