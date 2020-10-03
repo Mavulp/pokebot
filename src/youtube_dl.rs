@@ -28,23 +28,40 @@ where
     Ok(dur.map(Duration::from_secs_f64))
 }
 
-pub async fn get_audio_download_url(uri: String) -> Result<AudioMetadata, String> {
-    let ytdl_args = ["--no-playlist", "-f", "bestaudio/best", "-j", &uri];
+pub async fn get_audio_download_from_url(uri: String) -> Result<AudioMetadata, String> {
+    //youtube-dl sometimes just fails, so we give it a second try
+    let ytdl_output = match run_youtube_dl(&uri).await {
+        Ok(o) => o,
+        Err(e) => {
+            if e.contains("Unable to extract video data") {
+                run_youtube_dl(&uri).await?
+            } else {
+                return Err(e);
+            }
+        }
+    };
+
+    let output = serde_json::from_str(&ytdl_output).map_err(|e| e.to_string())?;
+
+    Ok(output)
+}
+
+async fn run_youtube_dl(url: &str) -> Result<String, String> {
+    let ytdl_args = ["--no-playlist", "-f", "bestaudio/best", "-j", &url];
 
     let mut cmd = Command::new("youtube-dl");
     cmd.args(&ytdl_args);
     cmd.stdin(Stdio::null());
 
     debug!("yt-dl command: {:?}", cmd);
-
     let ytdl_output = cmd.output().await.unwrap();
 
     if !ytdl_output.status.success() {
-        return Err(String::from_utf8(ytdl_output.stderr).unwrap());
+        let s = String::from_utf8(ytdl_output.stderr).unwrap();
+        return Err(s);
     }
 
     let output_str = String::from_utf8(ytdl_output.stdout).unwrap();
-    let output = serde_json::from_str(&output_str).map_err(|e| e.to_string())?;
 
-    Ok(output)
+    Ok(output_str)
 }

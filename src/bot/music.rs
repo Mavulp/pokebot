@@ -185,7 +185,7 @@ impl MusicBot {
     }
 
     pub async fn add_audio(&self, url: String, user: String) {
-        match crate::youtube_dl::get_audio_download_url(url).await {
+        match crate::youtube_dl::get_audio_download_from_url(url).await {
             Ok(mut metadata) => {
                 metadata.added_by = user;
                 info!("Found audio url: {}", metadata.url);
