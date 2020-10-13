@@ -1,22 +1,23 @@
-use actix::Addr;
 use actix_web::{get, web, HttpResponse, Responder, ResponseError};
 use derive_more::Display;
 use serde::Serialize;
+use xtra::WeakAddress;
 
-use crate::web_server::{BotDataListRequest, BotDataRequest, BotExecutor};
+use crate::web_server::{BotDataListRequest, BotDataRequest};
+use crate::MasterBot;
 
 #[get("/bots")]
-pub async fn get_bot_list(bot: web::Data<Addr<BotExecutor>>) -> impl Responder {
-    let bot_datas = match bot.send(BotDataListRequest).await.unwrap() {
-        Ok(data) => data,
-        Err(_) => Vec::with_capacity(0),
-    };
+pub async fn get_bot_list(bot: web::Data<WeakAddress<MasterBot>>) -> impl Responder {
+    let bot_datas = bot.send(BotDataListRequest).await.unwrap();
 
     web::Json(bot_datas)
 }
 
 #[get("/bots/{name}")]
-pub async fn get_bot(bot: web::Data<Addr<BotExecutor>>, name: web::Path<String>) -> impl Responder {
+pub async fn get_bot(
+    bot: web::Data<WeakAddress<MasterBot>>,
+    name: web::Path<String>,
+) -> impl Responder {
     if let Some(bot_data) = bot.send(BotDataRequest(name.into_inner())).await.unwrap() {
         Ok(web::Json(bot_data))
     } else {
