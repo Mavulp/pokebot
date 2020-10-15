@@ -1,9 +1,9 @@
-use actix::Addr;
 use actix_web::{http::header, web, Error, HttpResponse};
-use askama::Template;
-use askama_actix::TemplateIntoResponse;
+use askama_actix::{Template, TemplateIntoResponse};
+use xtra::WeakAddress;
 
-use crate::web_server::{filters, BotData, BotDataRequest, BotExecutor, BotNameListRequest};
+use crate::web_server::{filters, BotData, BotDataRequest, BotNameListRequest};
+use crate::MasterBot;
 
 #[derive(Template)]
 #[template(path = "index.htm")]
@@ -12,8 +12,8 @@ struct OverviewTemplate<'a> {
     bot: Option<&'a BotData>,
 }
 
-pub async fn index(bot: web::Data<Addr<BotExecutor>>) -> Result<HttpResponse, Error> {
-    let bot_names = bot.send(BotNameListRequest).await.unwrap().unwrap();
+pub async fn index(bot: web::Data<WeakAddress<MasterBot>>) -> Result<HttpResponse, Error> {
+    let bot_names = bot.send(BotNameListRequest).await.unwrap();
 
     OverviewTemplate {
         bot_names: &bot_names,
@@ -23,10 +23,10 @@ pub async fn index(bot: web::Data<Addr<BotExecutor>>) -> Result<HttpResponse, Er
 }
 
 pub async fn get_bot(
-    bot: web::Data<Addr<BotExecutor>>,
+    bot: web::Data<WeakAddress<MasterBot>>,
     name: String,
 ) -> Result<HttpResponse, Error> {
-    let bot_names = bot.send(BotNameListRequest).await.unwrap().unwrap();
+    let bot_names = bot.send(BotNameListRequest).await.unwrap();
 
     if let Some(bot) = bot.send(BotDataRequest(name)).await.unwrap() {
         OverviewTemplate {
@@ -35,7 +35,6 @@ pub async fn get_bot(
         }
         .into_response()
     } else {
-        // TODO to 404 or not to 404
         Ok(HttpResponse::Found().header(header::LOCATION, "/").finish())
     }
 }

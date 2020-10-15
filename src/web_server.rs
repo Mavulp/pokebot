@@ -1,38 +1,38 @@
-use std::sync::Arc;
 use std::time::Duration;
 
-use actix::{Actor, Addr};
-use actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder};
-use askama::Template;
-use askama_actix::TemplateIntoResponse;
+use actix_slog::StructuredLogger;
+use actix_web::{get, post, web, App, HttpServer, Responder};
+use askama_actix::{Template, TemplateIntoResponse};
 use serde::{Deserialize, Serialize};
+use slog::Logger;
+use xtra::WeakAddress;
 
 use crate::bot::MasterBot;
 use crate::youtube_dl::AudioMetadata;
 
 mod api;
-mod bot_executor;
+mod bot_data;
 mod default;
 mod front_end_cookie;
 mod tmtu;
-pub use bot_executor::*;
+pub use bot_data::*;
 use front_end_cookie::FrontEnd;
 
 pub struct WebServerArgs {
     pub domain: String,
     pub bind_address: String,
-    pub bot: Arc<MasterBot>,
+    pub bot: WeakAddress<MasterBot>,
 }
 
 #[actix_rt::main]
-pub async fn start(args: WebServerArgs) -> std::io::Result<()> {
-    let cbot = args.bot.clone();
-    let bot_addr: Addr<BotExecutor> = BotExecutor(cbot.clone()).start();
+pub async fn start(args: WebServerArgs, logger: Logger) -> std::io::Result<()> {
+    let bot = args.bot;
+    let bind_address = args.bind_address;
 
     HttpServer::new(move || {
         App::new()
-            .data(bot_addr.clone())
-            .wrap(Logger::default())
+            .data(bot.clone())
+            .wrap(StructuredLogger::new(logger.clone()))
             .service(index)
             .service(get_bot)
             .service(post_front_end)
@@ -44,11 +44,9 @@ pub async fn start(args: WebServerArgs) -> std::io::Result<()> {
             .service(web::scope("/docs").service(get_api_docs))
             .service(actix_files::Files::new("/static", "web_server/static/"))
     })
-    .bind(args.bind_address)?
+    .bind(bind_address)?
     .run()
     .await?;
-
-    args.bot.quit(String::from("Stopping"));
 
     Ok(())
 }
@@ -75,7 +73,7 @@ pub struct BotData {
 }
 
 #[get("/")]
-async fn index(bot: web::Data<Addr<BotExecutor>>, front: FrontEnd) -> impl Responder {
+async fn index(bot: web::Data<WeakAddress<MasterBot>>, front: FrontEnd) -> impl Responder {
     match front {
         FrontEnd::Default => default::index(bot).await,
         FrontEnd::Tmtu => tmtu::index(bot).await,
@@ -84,7 +82,7 @@ async fn index(bot: web::Data<Addr<BotExecutor>>, front: FrontEnd) -> impl Respo
 
 #[get("/bot/{name}")]
 async fn get_bot(
-    bot: web::Data<Addr<BotExecutor>>,
+    bot: web::Data<WeakAddress<MasterBot>>,
     name: web::Path<String>,
     front: FrontEnd,
 ) -> impl Responder {
