@@ -364,18 +364,18 @@ impl AudioPlayer {
                     warn!(
                         logger,
                         "Received warning from bus";
-                        "source" => ?warn.get_src().map(|s| s.get_path_string()),
+                        "source" => warn.get_src().map(|s| s.get_path_string().as_str().to_owned()),
                         "error" => %warn.get_error(),
-                        "debug" => ?warn.get_debug()
+                        "debug" => warn.get_debug()
                     );
                 }
                 MessageView::Error(err) => {
                     error!(
                         logger,
                         "Received error from bus";
-                        "source" => ?err.get_src().map(|s| s.get_path_string()),
+                        "source" => err.get_src().map(|s| s.get_path_string().as_str().to_owned()),
                         "error" => %err.get_error(),
-                        "debug" => ?err.get_debug()
+                        "debug" => err.get_debug()
                     );
 
                     send_state(&handle, &bot, State::EndOfStream);
