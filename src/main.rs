@@ -184,18 +184,21 @@ async fn run(root_logger: Logger) -> Result<(), Box<dyn std::error::Error>> {
 
         ctrl_c.await??;
     } else {
+        let webserver_enable = bot_args.webserver_enable;
         let domain = bot_args.domain.clone();
         let bind_address = bot_args.bind_address.clone();
         let bot_name = bot_args.master_name.clone();
         let bot_logger = root_logger.new(o!("master" => bot_name.clone()));
         let bot = MasterBot::spawn(bot_args, bot_logger).await;
 
-        let web_args = web_server::WebServerArgs {
-            domain,
-            bind_address,
-            bot: bot.downgrade(),
-        };
-        spawn_web_server(web_args, root_logger.new(o!("webserver" => bot_name)));
+        if webserver_enable {
+            let web_args = web_server::WebServerArgs {
+                domain,
+                bind_address,
+                bot: bot.downgrade(),
+            };
+            spawn_web_server(web_args, root_logger.new(o!("webserver" => bot_name)));
+        }
 
         #[cfg(unix)]
         tokio::select! {
