@@ -179,6 +179,7 @@ async fn run(root_logger: Logger) -> Result<(), Box<dyn std::error::Error>> {
             channel: String::from("local"),
             verbose: bot_args.verbose,
             logger: root_logger,
+            volume: bot_args.volume,
         };
         MusicBot::spawn(bot_args).await;
 

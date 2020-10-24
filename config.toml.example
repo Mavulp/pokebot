@@ -9,6 +9,9 @@ address = "localhost"
 # This uses the same format as bookmarks in the TeamSpeak 3 client.
 channel = "Lobby"
 
+# The default volume for the bot (0.0 to 1.0)
+volume = 0.3
+
 # Web server settings
 webserver_enable = true
 domain = "localhost"
