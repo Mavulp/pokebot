@@ -86,12 +86,13 @@ pub struct MusicBotArgs {
     pub channel: String,
     pub verbose: u8,
     pub logger: Logger,
+    pub volume: f64,
 }
 
 impl MusicBot {
     pub async fn spawn(args: MusicBotArgs) -> Address<Self> {
         let mut player = AudioPlayer::new(args.logger.clone()).unwrap();
-        player.change_volume(VolumeChange::Absolute(0.5)).unwrap();
+        player.change_volume(VolumeChange::Absolute(args.volume)).unwrap();
 
         let playlist = Playlist::new(args.logger.clone());
 

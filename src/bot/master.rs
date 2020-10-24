@@ -32,6 +32,7 @@ pub struct MasterArgs {
     pub master_name: String,
     pub address: String,
     pub channel: Option<String>,
+    pub volume: f64,
     #[serde(default = "default_verbose")]
     pub verbose: u8,
     pub domain: String,
@@ -66,6 +67,7 @@ impl MasterBot {
             master_name: args.master_name,
             address: args.address,
             verbose: args.verbose,
+            volume: args.volume,
         };
 
         let bot_addr = Self {
@@ -141,6 +143,7 @@ impl MasterBot {
             channel: channel_path,
             verbose: self.config.verbose,
             logger: self.logger.new(o!("musicbot" => name)),
+            volume: self.config.volume,
         })
     }
 
@@ -350,6 +353,7 @@ impl MasterArgs {
             id: self.id,
             channel,
             verbose,
+            volume: self.volume,
         }
     }
 }
@@ -358,4 +362,5 @@ pub struct MasterConfig {
     pub master_name: String,
     pub address: String,
     pub verbose: u8,
+    pub volume: f64,
 }
