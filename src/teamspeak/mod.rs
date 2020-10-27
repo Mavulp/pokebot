@@ -8,7 +8,7 @@ use tsclientlib::{
     ChannelId, ClientId, ConnectOptions, DisconnectOptions, MessageTarget, OutCommandExt, Reason,
 };
 
-use slog::{debug, error, info, trace, Logger};
+use slog::{debug, error, info, trace, warn, Logger};
 
 use crate::bot::{ChatMessage, MusicBotMessage};
 
@@ -85,7 +85,7 @@ fn get_message(event: &Event) -> Option<MusicBotMessage> {
 }
 
 impl TeamSpeakConnection {
-    pub async fn new(logger: Logger) -> Result<TeamSpeakConnection, tsclientlib::Error> {
+    pub async fn new(logger: Logger) -> anyhow::Result<TeamSpeakConnection> {
         Ok(TeamSpeakConnection {
             handle: None,
             logger,
@@ -96,7 +96,7 @@ impl TeamSpeakConnection {
         &mut self,
         options: ConnectOptions,
         bot: WeakAddress<T>,
-    ) -> Result<(), tsclientlib::Error> {
+    ) -> anyhow::Result<()> {
         info!(self.logger, "Starting TeamSpeak connection");
 
         let conn = options.connect()?;
@@ -113,6 +113,7 @@ impl TeamSpeakConnection {
                     Ok(ConEvents(events)) => {
                         for event in &events {
                             if let Some(msg) = get_message(event) {
+                                // FIXME Errors are just getting dropped
                                 tokio::spawn(bot.send(msg));
                             }
                         }
@@ -163,7 +164,7 @@ impl TeamSpeakConnection {
         Ok(())
     }
 
-    pub async fn send_audio_packet(&mut self, samples: &[u8]) {
+    pub async fn send_audio_packet(&mut self, samples: &[u8]) -> anyhow::Result<()> {
         let packet =
             tsproto_packets::packets::OutAudio::new(&tsproto_packets::packets::AudioData::C2S {
                 id: 0,
@@ -171,8 +172,7 @@ impl TeamSpeakConnection {
                 data: samples,
             });
 
-        if let Err(e) = self
-            .handle
+        self.handle
             .as_mut()
             .expect("connect_for_bot was called")
             .with_connection(move |conn| {
@@ -180,14 +180,14 @@ impl TeamSpeakConnection {
                     .expect("can get tsproto client")
                     .send_packet(packet)
             })
-            .await
-        {
-            error!(self.logger, "Failed to send voice packet: {}", e);
-        }
+            .await??;
+
+        Ok(())
     }
 
-    pub async fn channel_of_user(&mut self, id: ClientId) -> Option<ChannelId> {
-        self.handle
+    pub async fn channel_of_user(&mut self, id: ClientId) -> anyhow::Result<Option<ChannelId>> {
+        let id = self
+            .handle
             .as_mut()
             .expect("connect_for_bot was called")
             .with_connection(move |conn| {
@@ -197,14 +197,14 @@ impl TeamSpeakConnection {
                     .get(&id)
                     .map(|c| c.channel)
             })
-            .await
-            .map_err(|e| error!(self.logger, "Failed to get channel of user"; "error" => %e))
-            .ok()
-            .and_then(|v| v)
+            .await?;
+
+        Ok(id)
     }
 
-    pub async fn channel_path_of_user(&mut self, id: ClientId) -> Option<String> {
-        self.handle
+    pub async fn channel_path_of_user(&mut self, id: ClientId) -> anyhow::Result<Option<String>> {
+        let path = self
+            .handle
             .as_mut()
             .expect("connect_for_bot was called")
             .with_connection(move |conn| {
@@ -230,40 +230,39 @@ impl TeamSpeakConnection {
 
                 Some(path)
             })
-            .await
-            .map_err(|e| error!(self.logger, "Failed to get channel path of user"; "error" => %e))
-            .ok()
-            .and_then(|v| v)
+            .await?;
+
+        Ok(path)
     }
 
-    pub async fn current_channel(&mut self) -> Option<ChannelId> {
-        self.handle
+    pub async fn current_channel(&mut self) -> anyhow::Result<Option<ChannelId>> {
+        let id = self
+            .handle
             .as_mut()
             .expect("connect_for_bot was called")
             .with_connection(move |conn| {
                 let state = conn.get_state().expect("can get state");
-                state
-                    .clients
-                    .get(&state.own_client)
-                    .expect("can find myself")
-                    .channel
+                state.clients.get(&state.own_client).map(|c| c.channel)
             })
-            .await
-            .map_err(|e| error!(self.logger, "Failed to get channel"; "error" => %e))
-            .ok()
+            .await?;
+
+        Ok(id)
     }
 
-    pub async fn my_id(&mut self) -> ClientId {
-        self.handle
+    pub async fn my_id(&mut self) -> anyhow::Result<ClientId> {
+        let id = self
+            .handle
             .as_mut()
             .expect("connect_for_bot was called")
             .with_connection(move |conn| conn.get_state().expect("can get state").own_client)
-            .await
-            .unwrap()
+            .await?;
+
+        Ok(id)
     }
 
-    pub async fn user_count(&mut self, channel: ChannelId) -> u32 {
-        self.handle
+    pub async fn user_count(&mut self, channel: ChannelId) -> anyhow::Result<u32> {
+        let count = self
+            .handle
             .as_mut()
             .expect("connect_for_bot was called")
             .with_connection(move |conn| {
@@ -277,13 +276,13 @@ impl TeamSpeakConnection {
 
                 count
             })
-            .await
-            .unwrap()
+            .await?;
+
+        Ok(count)
     }
 
-    pub async fn set_nickname(&mut self, name: String) {
-        if let Err(e) = self
-            .handle
+    pub async fn set_nickname(&mut self, name: String) -> anyhow::Result<()> {
+        self.handle
             .as_mut()
             .expect("connect_for_bot was called")
             .with_connection(move |mut conn| {
@@ -293,11 +292,9 @@ impl TeamSpeakConnection {
                     .set_name(&name)
                     .send(&mut conn)
             })
-            .await
-            .and_then(|v| v)
-        {
-            error!(self.logger, "Failed to set nickname: {}", e);
-        }
+            .await??;
+
+        Ok(())
     }
 
     pub async fn set_description(&mut self, desc: String) {
@@ -318,13 +315,12 @@ impl TeamSpeakConnection {
             .await
             .and_then(|v| v)
         {
-            error!(self.logger, "Failed to change description: {}", e);
+            warn!(self.logger, "Failed to set description"; "error" => %e);
         }
     }
 
-    pub async fn send_message_to_channel(&mut self, text: String) {
-        if let Err(e) = self
-            .handle
+    pub async fn send_message_to_channel(&mut self, text: String) -> anyhow::Result<()> {
+        self.handle
             .as_mut()
             .expect("connect_for_bot was called")
             .with_connection(move |mut conn| {
@@ -333,16 +329,17 @@ impl TeamSpeakConnection {
                     .send_message(MessageTarget::Channel, &text)
                     .send(&mut conn)
             })
-            .await
-            .and_then(|v| v)
-        {
-            error!(self.logger, "Failed to send message: {}", e);
-        }
+            .await??;
+
+        Ok(())
     }
 
-    pub async fn send_message_to_user(&mut self, client: ClientId, text: String) {
-        if let Err(e) = self
-            .handle
+    pub async fn send_message_to_user(
+        &mut self,
+        client: ClientId,
+        text: String,
+    ) -> anyhow::Result<()> {
+        self.handle
             .as_mut()
             .expect("connect_for_bot was called")
             .with_connection(move |mut conn| {
@@ -351,14 +348,12 @@ impl TeamSpeakConnection {
                     .send_message(MessageTarget::Client(client), &text)
                     .send(&mut conn)
             })
-            .await
-            .and_then(|v| v)
-        {
-            error!(self.logger, "Failed to send message: {}", e);
-        }
+            .await??;
+
+        Ok(())
     }
 
-    pub async fn disconnect(&mut self, reason: &str) -> Result<(), tsclientlib::Error> {
+    pub async fn disconnect(&mut self, reason: &str) -> anyhow::Result<()> {
         let opt = DisconnectOptions::new()
             .reason(Reason::Clientdisconnect)
             .message(reason);
@@ -366,6 +361,8 @@ impl TeamSpeakConnection {
             .as_mut()
             .expect("connect_for_bot was called")
             .disconnect(opt)
-            .await
+            .await?;
+
+        Ok(())
     }
 }

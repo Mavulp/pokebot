@@ -1,12 +1,12 @@
 use async_trait::async_trait;
 
 use serde::Serialize;
-use slog::{debug, info, Logger};
+use slog::{debug, info, warn, Logger};
 use structopt::StructOpt;
 use tsclientlib::{data, ChannelId, ClientId, Connection, Identity, Invoker, MessageTarget};
 use xtra::{spawn::Tokio, Actor, Address, Context, Handler, Message, WeakAddress};
 
-use crate::audio_player::{AudioPlayer, AudioPlayerError};
+use crate::audio_player::AudioPlayer;
 use crate::bot::{BotDisonnected, Connect, MasterBot, Quit};
 use crate::command::Command;
 use crate::command::VolumeChange;
@@ -35,7 +35,7 @@ impl Message for State {
 }
 
 impl std::fmt::Display for State {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> anyhow::Result<(), std::fmt::Error> {
         match self {
             State::Playing => write!(fmt, "Playing"),
             State::Paused => write!(fmt, "Paused"),
@@ -63,7 +63,7 @@ pub enum MusicBotMessage {
 }
 
 impl Message for MusicBotMessage {
-    type Result = Result<(), AudioPlayerError>;
+    type Result = anyhow::Result<()>;
 }
 
 pub struct MusicBot {
@@ -148,7 +148,7 @@ impl MusicBot {
         bot_addr
     }
 
-    async fn start_playing_audio(&mut self, metadata: AudioMetadata) {
+    async fn start_playing_audio(&mut self, metadata: AudioMetadata) -> anyhow::Result<()> {
         let duration = if let Some(duration) = metadata.duration {
             format!("({})", ts::bold(&humantime::format_duration(duration)))
         } else {
@@ -160,15 +160,17 @@ impl MusicBot {
             ts::underline(&metadata.title),
             duration
         ))
-        .await;
+        .await?;
         self.set_description(format!("Currently playing '{}'", metadata.title))
             .await;
         self.player.reset().unwrap();
         self.player.set_metadata(metadata).unwrap();
         self.player.play().unwrap();
+
+        Ok(())
     }
 
-    pub async fn add_audio(&mut self, url: String, user: String) {
+    pub async fn add_audio(&mut self, url: String, user: String) -> anyhow::Result<()> {
         match youtube_dl::get_audio_download_from_url(url, &self.logger).await {
             Ok(mut metadata) => {
                 metadata.added_by = user;
@@ -179,7 +181,7 @@ impl MusicBot {
                 if !self.player.is_started() {
                     let entry = self.playlist.pop();
                     if let Some(request) = entry {
-                        self.start_playing_audio(request).await;
+                        self.start_playing_audio(request).await?;
                     }
                 } else {
                     let duration = if let Some(duration) = metadata.duration {
@@ -193,16 +195,18 @@ impl MusicBot {
                         ts::underline(&metadata.title),
                         duration
                     ))
-                    .await;
+                    .await?;
                 }
             }
             Err(e) => {
                 info!(self.logger, "Failed to find audio url"; "error" => &e);
 
                 self.send_message(format!("Failed to find url: {}", e))
-                    .await;
+                    .await?;
             }
         }
+
+        Ok(())
     }
 
     pub fn name(&self) -> &str {
@@ -217,32 +221,36 @@ impl MusicBot {
         self.player.volume()
     }
 
-    pub async fn current_channel(&mut self) -> Option<ChannelId> {
+    pub async fn current_channel(&mut self) -> anyhow::Result<Option<ChannelId>> {
         let ts = self.teamspeak.as_mut().expect("current_channel needs ts");
 
         ts.current_channel().await
     }
 
-    async fn user_count(&mut self, channel: ChannelId) -> u32 {
+    async fn user_count(&mut self, channel: ChannelId) -> anyhow::Result<u32> {
         let ts = self.teamspeak.as_mut().expect("user_count needs ts");
 
         ts.user_count(channel).await
     }
 
-    async fn send_message(&mut self, text: String) {
+    async fn send_message(&mut self, text: String) -> anyhow::Result<()> {
         debug!(self.logger, "Sending message to TeamSpeak"; "message" => &text);
 
         if let Some(ts) = &mut self.teamspeak {
-            ts.send_message_to_channel(text).await;
+            ts.send_message_to_channel(text).await?;
         }
+
+        Ok(())
     }
 
-    async fn set_nickname(&mut self, name: String) {
+    async fn set_nickname(&mut self, name: String) -> anyhow::Result<()> {
         info!(self.logger, "Setting TeamSpeak nickname"; "name" => &name);
 
         if let Some(ts) = &mut self.teamspeak {
-            ts.set_nickname(name).await;
+            ts.set_nickname(name).await?;
         }
+
+        Ok(())
     }
 
     async fn set_description(&mut self, desc: String) {
@@ -253,7 +261,7 @@ impl MusicBot {
         }
     }
 
-    async fn on_text(&mut self, message: ChatMessage) -> Result<(), AudioPlayerError> {
+    async fn on_text(&mut self, message: ChatMessage) -> anyhow::Result<()> {
         let msg = message.text;
         if msg.starts_with('!') {
             let tokens = msg[1..].split_whitespace().collect::<Vec<_>>();
@@ -261,7 +269,7 @@ impl MusicBot {
             match Command::from_iter_safe(&tokens) {
                 Ok(args) => self.on_command(args, message.invoker).await?,
                 Err(e) if e.kind == structopt::clap::ErrorKind::HelpDisplayed => {
-                    self.send_message(format!("\n{}", e.message)).await;
+                    self.send_message(format!("\n{}", e.message)).await?;
                 }
                 _ => (),
             }
@@ -270,11 +278,7 @@ impl MusicBot {
         Ok(())
     }
 
-    async fn on_command(
-        &mut self,
-        command: Command,
-        invoker: Invoker,
-    ) -> Result<(), AudioPlayerError> {
+    async fn on_command(&mut self, command: Command, invoker: Invoker) -> anyhow::Result<()> {
         match command {
             Command::Play => {
                 if !self.player.is_started() {
@@ -289,11 +293,11 @@ impl MusicBot {
                 // strip bbcode tags from url
                 let url = url.replace("[URL]", "").replace("[/URL]", "");
 
-                self.add_audio(url.to_string(), invoker.name).await;
+                self.add_audio(url.to_string(), invoker.name).await?;
             }
             Command::Search { query } => {
                 self.add_audio(format!("ytsearch:{}", query.join(" ")), invoker.name)
-                    .await;
+                    .await?;
             }
             Command::Pause => {
                 self.player.pause()?;
@@ -301,14 +305,16 @@ impl MusicBot {
             Command::Stop => {
                 self.player.reset()?;
             }
-            Command::Seek { amount } => {
-                if let Ok(time) = self.player.seek(amount) {
+            Command::Seek { amount } => match self.player.seek(amount) {
+                Ok(time) => {
                     self.send_message(format!("New position: {}", ts::bold(&time)))
-                        .await;
-                } else {
-                    self.send_message(String::from("Failed to seek")).await;
+                        .await?;
                 }
-            }
+                Err(e) => {
+                    warn!(self.logger, "Failed to seek"; "error" => %e);
+                    self.send_message(String::from("Failed to seek")).await?;
+                }
+            },
             Command::Next => {
                 if !self.playlist.is_empty() {
                     info!(self.logger, "Skipping to next track");
@@ -319,31 +325,32 @@ impl MusicBot {
                 }
             }
             Command::Clear => {
-                self.send_message(String::from("Cleared playlist")).await;
+                self.send_message(String::from("Cleared playlist")).await?;
                 self.playlist.clear();
             }
             Command::Volume { volume } => {
                 self.player.change_volume(volume)?;
-                self.update_name(self.state()).await;
+                self.update_name(self.state()).await?;
             }
             Command::Leave => {
-                self.quit(String::from("Leaving"), true).await.unwrap();
+                self.quit(String::from("Leaving"), true).await?;
             }
         }
 
         Ok(())
     }
 
-    async fn update_name(&mut self, state: State) {
+    async fn update_name(&mut self, state: State) -> anyhow::Result<()> {
         let volume = (self.volume().await * 100.0).round();
         let name = match state {
             State::EndOfStream => format!("🎵 {} ({}%)", self.name, volume),
             _ => format!("🎵 {} - {} ({}%)", self.name, state, volume),
         };
-        self.set_nickname(name).await;
+
+        self.set_nickname(name).await
     }
 
-    async fn on_state(&mut self, new_state: State) -> Result<(), AudioPlayerError> {
+    async fn on_state(&mut self, new_state: State) -> anyhow::Result<()> {
         if self.state != new_state {
             match new_state {
                 State::EndOfStream => {
@@ -352,19 +359,19 @@ impl MusicBot {
                     if let Some(request) = next_track {
                         info!(self.logger, "Advancing playlist");
 
-                        self.start_playing_audio(request).await;
+                        self.start_playing_audio(request).await?;
                     } else {
-                        self.update_name(new_state).await;
+                        self.update_name(new_state).await?;
                         self.set_description(String::new()).await;
                     }
                 }
                 State::Stopped => {
                     if self.state != State::EndOfStream {
-                        self.update_name(new_state).await;
+                        self.update_name(new_state).await?;
                         self.set_description(String::new()).await;
                     }
                 }
-                _ => self.update_name(new_state).await,
+                _ => self.update_name(new_state).await?,
             }
         }
 
@@ -375,7 +382,7 @@ impl MusicBot {
         Ok(())
     }
 
-    async fn on_message(&mut self, message: MusicBotMessage) -> Result<(), AudioPlayerError> {
+    async fn on_message(&mut self, message: MusicBotMessage) -> anyhow::Result<()> {
         match message {
             MusicBotMessage::TextMessage(message) => {
                 if MessageTarget::Channel == message.target {
@@ -383,14 +390,14 @@ impl MusicBot {
                 }
             }
             MusicBotMessage::ClientChannel {
-                client: _,
+                client,
                 old_channel,
             } => {
-                self.on_client_left_channel(old_channel).await;
+                self.on_client_left_channel(client, old_channel).await?;
             }
-            MusicBotMessage::ClientDisconnected { id: _, client } => {
+            MusicBotMessage::ClientDisconnected { id, client } => {
                 let old_channel = client.channel;
-                self.on_client_left_channel(old_channel).await;
+                self.on_client_left_channel(id, old_channel).await?;
             }
             MusicBotMessage::StateChange(state) => {
                 self.on_state(state).await?;
@@ -401,26 +408,36 @@ impl MusicBot {
         Ok(())
     }
 
-    // FIXME logs an error if this music bot is the one leaving
-    async fn on_client_left_channel(&mut self, old_channel: ChannelId) {
-        let current_channel = match self.current_channel().await {
-            Some(c) => c,
-            None => {
-                return;
-            }
+    async fn on_client_left_channel(
+        &mut self,
+        id: ClientId,
+        old_channel: ChannelId,
+    ) -> anyhow::Result<()> {
+        match self.teamspeak.as_mut().unwrap().my_id().await {
+            Ok(my_id) if my_id != id => (),
+            _ => return Ok(()),
         };
-        if old_channel == current_channel && self.user_count(current_channel).await <= 1 {
-            self.quit(String::from("Channel is empty"), true)
-                .await
-                .unwrap();
+
+        let current_channel = self
+            .current_channel()
+            .await?
+            .expect("Current channel is known");
+        if old_channel == current_channel {
+            let quit = match self.user_count(current_channel).await {
+                Ok(count) if count <= 1 => Some(String::from("Channel is empty")),
+                Err(e) => Some(format!("Error: {}", e)),
+                Ok(_) => None,
+            };
+
+            if let Some(reason) = quit {
+                self.quit(reason, true).await?;
+            }
         }
+
+        Ok(())
     }
 
-    pub async fn quit(
-        &mut self,
-        reason: String,
-        inform_master: bool,
-    ) -> Result<(), tsclientlib::Error> {
+    pub async fn quit(&mut self, reason: String, inform_master: bool) -> anyhow::Result<()> {
         // FIXME logs errors if the bot is playing something because it tries to
         // change its name and description
         self.player.reset().unwrap();
@@ -454,11 +471,7 @@ impl Actor for MusicBot {
 
 #[async_trait]
 impl Handler<Connect> for MusicBot {
-    async fn handle(
-        &mut self,
-        opt: Connect,
-        ctx: &mut Context<Self>,
-    ) -> Result<(), tsclientlib::Error> {
+    async fn handle(&mut self, opt: Connect, ctx: &mut Context<Self>) -> anyhow::Result<()> {
         let addr = ctx.address().unwrap().downgrade();
         self.teamspeak
             .as_mut()
@@ -469,7 +482,9 @@ impl Handler<Connect> for MusicBot {
         let handle = tokio::runtime::Handle::current();
         self.player
             .setup_with_audio_callback(Some(Box::new(move |samples| {
-                handle.block_on(connection.send_audio_packet(samples));
+                handle
+                    .block_on(connection.send_audio_packet(samples))
+                    .unwrap();
             })))
             .unwrap();
 
@@ -510,31 +525,33 @@ impl Handler<GetBotData> for MusicBot {
 
 pub struct GetChannel;
 impl Message for GetChannel {
-    type Result = Option<ChannelId>;
+    type Result = anyhow::Result<Option<ChannelId>>;
 }
 
 #[async_trait]
 impl Handler<GetChannel> for MusicBot {
-    async fn handle(&mut self, _: GetChannel, _: &mut Context<Self>) -> Option<ChannelId> {
+    async fn handle(
+        &mut self,
+        _: GetChannel,
+        _: &mut Context<Self>,
+    ) -> anyhow::Result<Option<ChannelId>> {
         self.current_channel().await
     }
 }
 
 #[async_trait]
 impl Handler<Quit> for MusicBot {
-    async fn handle(&mut self, q: Quit, _: &mut Context<Self>) -> Result<(), tsclientlib::Error> {
+    async fn handle(&mut self, q: Quit, _: &mut Context<Self>) -> anyhow::Result<()> {
         self.quit(q.0, false).await
     }
 }
 
 #[async_trait]
 impl Handler<MusicBotMessage> for MusicBot {
-    async fn handle(
-        &mut self,
-        msg: MusicBotMessage,
-        _: &mut Context<Self>,
-    ) -> Result<(), AudioPlayerError> {
-        self.on_message(msg).await
+    async fn handle(&mut self, msg: MusicBotMessage, _: &mut Context<Self>) -> anyhow::Result<()> {
+        self.on_message(msg).await?;
+
+        Ok(())
     }
 }
 

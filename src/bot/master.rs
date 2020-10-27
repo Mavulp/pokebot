@@ -8,7 +8,6 @@ use slog::{error, info, o, trace, Logger};
 use tsclientlib::{ClientId, ConnectOptions, Connection, Identity, MessageTarget};
 use xtra::{spawn::Tokio, Actor, Address, Context, Handler, Message, WeakAddress};
 
-use crate::audio_player::AudioPlayerError;
 use crate::teamspeak::TeamSpeakConnection;
 
 use crate::Args;
@@ -89,23 +88,25 @@ impl MasterBot {
     async fn bot_args_for_client(
         &mut self,
         user_id: ClientId,
-    ) -> Result<MusicBotArgs, BotCreationError> {
-        let channel = match self.teamspeak.channel_of_user(user_id).await {
+    ) -> std::result::Result<MusicBotArgs, BotCreationError> {
+        let channel = match self.teamspeak.channel_of_user(user_id).await.unwrap() {
             Some(channel) => channel,
             None => return Err(BotCreationError::UnfoundUser),
         };
 
-        if channel == self.teamspeak.current_channel().await.unwrap() {
+        if Some(channel) == self.teamspeak.current_channel().await.unwrap() {
             return Err(BotCreationError::MasterChannel(
                 self.config.master_name.clone(),
             ));
         }
 
         for bot in self.connected_bots.values() {
-            if bot.send(GetChannel).await.unwrap() == Some(channel) {
-                return Err(BotCreationError::MultipleBots(
-                    bot.send(GetName).await.unwrap(),
-                ));
+            if let Ok(c) = bot.send(GetChannel).await.unwrap() {
+                if c == Some(channel) {
+                    return Err(BotCreationError::MultipleBots(
+                        bot.send(GetName).await.unwrap(),
+                    ));
+                }
             }
         }
 
@@ -113,6 +114,7 @@ impl MasterBot {
             .teamspeak
             .channel_path_of_user(user_id)
             .await
+            .expect("can find poke sender")
             .expect("can find poke sender");
 
         self.available_names.shuffle(&mut self.rng);
@@ -143,18 +145,24 @@ impl MasterBot {
         })
     }
 
-    async fn spawn_bot_for_client(&mut self, id: ClientId) {
+    async fn spawn_bot_for_client(&mut self, id: ClientId) -> anyhow::Result<()> {
         match self.bot_args_for_client(id).await {
             Ok(bot_args) => {
                 let name = bot_args.name.clone();
                 let bot = MusicBot::spawn(bot_args).await;
                 self.connected_bots.insert(name, bot);
             }
-            Err(e) => self.teamspeak.send_message_to_user(id, e.to_string()).await,
+            Err(e) => {
+                self.teamspeak
+                    .send_message_to_user(id, e.to_string())
+                    .await?;
+            }
         }
+
+        Ok(())
     }
 
-    async fn on_message(&mut self, message: MusicBotMessage) -> Result<(), AudioPlayerError> {
+    async fn on_message(&mut self, message: MusicBotMessage) -> anyhow::Result<()> {
         match message {
             MusicBotMessage::TextMessage(message) => {
                 if let MessageTarget::Poke(who) = message.target {
@@ -162,11 +170,11 @@ impl MasterBot {
                         self.logger,
                         "Poked, creating bot"; "user" => %who
                     );
-                    self.spawn_bot_for_client(who).await;
+                    self.spawn_bot_for_client(who).await?;
                 }
             }
             MusicBotMessage::ClientAdded(id) => {
-                if id == self.teamspeak.my_id().await {
+                if id == self.teamspeak.my_id().await? {
                     self.teamspeak
                         .set_description(String::from("Poke me if you want a music bot!"))
                         .await;
@@ -211,7 +219,7 @@ impl MasterBot {
         self.available_ids.push(id);
     }
 
-    pub async fn quit(&mut self, reason: String) -> Result<(), tsclientlib::Error> {
+    pub async fn quit(&mut self, reason: String) -> anyhow::Result<()> {
         let futures = self
             .connected_bots
             .values()
@@ -234,16 +242,12 @@ impl Actor for MasterBot {
 
 pub struct Connect(pub ConnectOptions);
 impl Message for Connect {
-    type Result = Result<(), tsclientlib::Error>;
+    type Result = anyhow::Result<()>;
 }
 
 #[async_trait]
 impl Handler<Connect> for MasterBot {
-    async fn handle(
-        &mut self,
-        opt: Connect,
-        ctx: &mut Context<Self>,
-    ) -> Result<(), tsclientlib::Error> {
+    async fn handle(&mut self, opt: Connect, ctx: &mut Context<Self>) -> anyhow::Result<()> {
         let addr = ctx.address().unwrap();
         self.teamspeak.connect_for_bot(opt.0, addr.downgrade())?;
         Ok(())
@@ -252,12 +256,12 @@ impl Handler<Connect> for MasterBot {
 
 pub struct Quit(pub String);
 impl Message for Quit {
-    type Result = Result<(), tsclientlib::Error>;
+    type Result = anyhow::Result<()>;
 }
 
 #[async_trait]
 impl Handler<Quit> for MasterBot {
-    async fn handle(&mut self, q: Quit, _: &mut Context<Self>) -> Result<(), tsclientlib::Error> {
+    async fn handle(&mut self, q: Quit, _: &mut Context<Self>) -> anyhow::Result<()> {
         self.quit(q.0).await
     }
 }
@@ -280,11 +284,7 @@ impl Handler<BotDisonnected> for MasterBot {
 
 #[async_trait]
 impl Handler<MusicBotMessage> for MasterBot {
-    async fn handle(
-        &mut self,
-        msg: MusicBotMessage,
-        _: &mut Context<Self>,
-    ) -> Result<(), AudioPlayerError> {
+    async fn handle(&mut self, msg: MusicBotMessage, _: &mut Context<Self>) -> anyhow::Result<()> {
         self.on_message(msg).await
     }
 }

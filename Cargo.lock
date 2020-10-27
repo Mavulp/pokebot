@@ -2279,6 +2279,7 @@ dependencies = [
  "actix-rt",
  "actix-slog",
  "actix-web",
+ "anyhow",
  "askama",
  "askama_actix",
  "async-trait",
