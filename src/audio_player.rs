@@ -402,6 +402,20 @@ pub enum AudioPlayerError {
     SeekError,
 }
 
+impl std::fmt::Display for AudioPlayerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        use AudioPlayerError::*;
+        match self {
+            MissingPlugin(name) => write!(f, "The '{}' GStreamer plugin was not found", name),
+            GStreamerError(e) => write!(f, "{}", e),
+            StateChangeFailed => write!(f, "AudioPlayer failed to change state"),
+            SeekError => write!(f, "AudioPlayer failed to seek"),
+        }
+    }
+}
+
+impl std::error::Error for AudioPlayerError {}
+
 impl From<glib::error::BoolError> for AudioPlayerError {
     fn from(err: BoolError) -> Self {
         AudioPlayerError::GStreamerError(err)
