@@ -34,13 +34,13 @@ fn make_element(factoryname: &str, display_name: &str) -> Result<gst::Element, A
         .map_err(|_| AudioPlayerError::MissingPlugin(factoryname.to_string()))?)
 }
 
-fn add_decode_bin_new_pad_callback(
-    decode_bin: &gst::Element,
+fn add_uri_src_new_pad_callback(
+    uri_src: &gst::Element,
     audio_bin: gst::Bin,
     ghost_pad: gst::GhostPad,
     logger: Logger,
 ) {
-    decode_bin.connect_pad_added(move |_, new_pad| {
+    uri_src.connect_pad_added(move |_, new_pad| {
         debug!(logger, "New pad received on decode bin");
         let name = if let Some(caps) = new_pad.get_current_caps() {
             debug!(logger, "Found caps"; "caps" => caps.to_string());
@@ -100,10 +100,7 @@ impl AudioPlayer {
         &self,
         callback: Option<Box<dyn FnMut(&[u8]) + Send>>,
     ) -> Result<(), AudioPlayerError> {
-        let decode_bin = make_element("decodebin", "decode bin")?;
-        self.pipeline.add_many(&[&self.uri_src, &decode_bin])?;
-
-        self.uri_src.link(&decode_bin)?;
+        self.pipeline.add(&self.uri_src)?;
 
         let audio_bin = gst::Bin::new(Some("audio bin"));
         let queue = make_element("queue", "audio queue")?;
@@ -153,7 +150,7 @@ impl AudioPlayer {
         } else {
             let sink = make_element("autoaudiosink", "auto audio sink")?;
 
-            audio_bin.add_many(&[&sink])?;
+            audio_bin.add(&sink)?;
 
             gst::Element::link_many(&[&queue, &convert, &self.volume, &resample, &sink])?;
         };
@@ -162,8 +159,8 @@ impl AudioPlayer {
         ghost_pad.set_active(true)?;
         audio_bin.add_pad(&ghost_pad)?;
 
-        add_decode_bin_new_pad_callback(
-            &decode_bin,
+        add_uri_src_new_pad_callback(
+            &self.uri_src,
             audio_bin.clone(),
             ghost_pad,
             self.logger.clone(),

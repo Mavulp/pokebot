@@ -1,12 +1,13 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
+use anyhow::anyhow;
+use async_trait::async_trait;
 use serde::Serialize;
 use slog::{debug, info, warn, Logger};
 use structopt::StructOpt;
 use tsclientlib::{data, ChannelId, ClientId, Connection, Identity, Invoker, MessageTarget};
 use xtra::{spawn::Tokio, Actor, Address, Context, Handler, Message, WeakAddress};
-use async_trait::async_trait;
-use anyhow::anyhow;
 
 use crate::audio_player::AudioPlayer;
 use crate::bot::{BotDisonnected, Connect, MasterBot, Quit};
@@ -94,7 +95,9 @@ pub struct MusicBotArgs {
 impl MusicBot {
     pub async fn spawn(args: MusicBotArgs) -> Address<Self> {
         let mut player = AudioPlayer::new(args.logger.clone()).unwrap();
-        player.change_volume(VolumeChange::Absolute(args.volume)).unwrap();
+        player
+            .change_volume(VolumeChange::Absolute(args.volume))
+            .unwrap();
 
         let playlist = Playlist::new(args.logger.clone());
 
@@ -119,13 +122,17 @@ impl MusicBot {
 
         let bot_addr = bot.create(None).spawn(&mut Tokio::Global);
 
-        info!(
-            args.logger,
-            "Connecting";
-            "name" => &args.name,
-            "channel" => &args.channel,
-            "address" => &args.address,
-        );
+        if args.local {
+            info!(args.logger, "Starting in local mode");
+        } else {
+            info!(
+                args.logger,
+                "Connecting";
+                "name" => &args.name,
+                "channel" => &args.channel,
+                "address" => &args.address,
+            );
+        }
 
         let opt = Connection::build(args.address)
             .logger(args.logger.clone())
@@ -137,16 +144,17 @@ impl MusicBot {
             .log_udp_packets(args.verbose >= 3)
             .channel(args.channel);
         bot_addr.send(Connect(opt)).await.unwrap().unwrap();
+
+        if args.local {
+            debug!(args.logger, "Spawning stdin reader thread");
+            spawn_stdin_reader(bot_addr.clone());
+        }
+
         bot_addr
             .send(MusicBotMessage::StateChange(State::EndOfStream))
             .await
             .unwrap()
             .unwrap();
-
-        if args.local {
-            debug!(args.logger, "Spawning stdin reader thread");
-            spawn_stdin_reader(bot_addr.downgrade());
-        }
 
         bot_addr
     }
@@ -193,15 +201,15 @@ impl MusicBot {
                 return Err(anyhow!("Invalid path"));
             }
 
-            AudioMetadata {
+            let metadata = metadata_from_file(&path, &user);
+            metadata.unwrap_or_else(|| AudioMetadata {
                 uri: format!("file://{}", path.to_string_lossy()),
-                webpage_url: String::new(),
+                webpage_url: None,
                 title: path.file_name().unwrap().to_string_lossy().to_string(),
                 thumbnail: None,
                 duration: None,
                 added_by: user,
-            }
-
+            })
         } else {
             match crate::youtube_dl::get_audio_download_from_url(uri, &self.logger).await {
                 Ok(mut metadata) => {
@@ -212,7 +220,8 @@ impl MusicBot {
                 }
                 Err(e) => {
                     info!(self.logger, "Failed to find audio url"; "error" => &e);
-                    self.send_message(format!("Failed to find url: {}", e)).await?;
+                    self.send_message(format!("Failed to find url: {}", e))
+                        .await?;
 
                     return Err(anyhow!(e))?;
                 }
@@ -236,7 +245,8 @@ impl MusicBot {
                 "Added {}{} to playlist",
                 ts::underline(&metadata.title),
                 duration
-            )).await?;
+            ))
+            .await?;
         }
 
         Ok(())
@@ -312,6 +322,7 @@ impl MusicBot {
     }
 
     async fn on_command(&mut self, command: Command, invoker: Invoker) -> anyhow::Result<()> {
+        debug!(self.logger, "User command: {:?}", command);
         match command {
             Command::Play => {
                 if !self.player.is_started() {
@@ -475,8 +486,9 @@ impl MusicBot {
         // change its name and description
         self.player.reset().unwrap();
 
-        let ts = self.teamspeak.as_mut().unwrap();
-        ts.disconnect(&reason).await?;
+        if let Some(ts) = self.teamspeak.as_mut() {
+            ts.disconnect(&reason).await?;
+        }
 
         if inform_master {
             if let Some(master) = &self.master {
@@ -506,20 +518,18 @@ impl Actor for MusicBot {
 impl Handler<Connect> for MusicBot {
     async fn handle(&mut self, opt: Connect, ctx: &mut Context<Self>) -> anyhow::Result<()> {
         let addr = ctx.address().unwrap().downgrade();
-        self.teamspeak
-            .as_mut()
-            .unwrap()
-            .connect_for_bot(opt.0, addr)?;
-
-        let mut connection = self.teamspeak.as_ref().unwrap().clone();
-        let handle = tokio::runtime::Handle::current();
-        self.player
-            .setup_with_audio_callback(Some(Box::new(move |samples| {
-                handle
-                    .block_on(connection.send_audio_packet(samples))
-                    .unwrap();
-            })))
-            .unwrap();
+        if let Some(ts) = self.teamspeak.as_mut() {
+            ts.connect_for_bot(opt.0, addr)?;
+            let mut connection = ts.clone();
+            let handle = tokio::runtime::Handle::current();
+            self.player
+                .setup_with_audio_callback(Some(Box::new(move |samples| {
+                    handle
+                        .block_on(connection.send_audio_packet(samples))
+                        .unwrap();
+                })))
+                .unwrap();
+        }
 
         Ok(())
     }
@@ -588,7 +598,72 @@ impl Handler<MusicBotMessage> for MusicBot {
     }
 }
 
-fn spawn_stdin_reader(addr: WeakAddress<MusicBot>) {
+fn metadata_from_file(path: &Path, user: &str) -> Option<AudioMetadata> {
+    match path.extension().and_then(|s| s.to_str()) {
+        Some("mp3") => {
+            let tag = id3::Tag::read_from_path(&path).ok()?;
+            let title = match (tag.title(), tag.artist()) {
+                (Some(title), Some(artist)) => format!("{} - {}", title, artist),
+                (Some(title), _) => title.to_owned(),
+                (_, _) => path.file_name().unwrap().to_string_lossy().to_string(),
+            };
+
+            let mut cover = None;
+            for picture in tag.pictures() {
+                if picture.picture_type == id3::frame::PictureType::CoverFront {
+                    cover = Some(format!(
+                        "data:image/jpg;base64,{}",
+                        base64::encode(&picture.data)
+                    ));
+                }
+            }
+
+            return Some(AudioMetadata {
+                uri: format!("file://{}", path.to_string_lossy()),
+                webpage_url: None,
+                title,
+                thumbnail: cover,
+                duration: tag.duration().map(|s| Duration::from_millis(s as u64)),
+                added_by: user.to_owned(),
+            });
+        }
+        Some("flac") => {
+            let tag = metaflac::Tag::read_from_path(&path).ok()?;
+            let comments = &tag.vorbis_comments()?;
+            let title = match (comments.title(), comments.artist()) {
+                (Some(title), Some(artist)) => {
+                    format!("{} - {}", title.join(";"), artist.join(";"))
+                }
+                (Some(title), _) => title.join(";"),
+                (_, _) => path.file_name().unwrap().to_string_lossy().to_string(),
+            };
+
+            let mut cover = None;
+            for picture in tag.pictures() {
+                if picture.picture_type == metaflac::block::PictureType::CoverFront {
+                    cover = Some(format!(
+                        "data:image/jpg;base64,{}",
+                        base64::encode(&picture.data)
+                    ));
+                }
+            }
+
+            return Some(AudioMetadata {
+                uri: format!("file://{}", path.to_string_lossy()),
+                webpage_url: None,
+                title,
+                thumbnail: cover,
+                duration: None,
+                added_by: user.to_owned(),
+            });
+        }
+        _ => (),
+    }
+
+    None
+}
+
+fn spawn_stdin_reader(addr: Address<MusicBot>) {
     use tokio::io::AsyncBufReadExt;
 
     tokio::task::spawn(async move {

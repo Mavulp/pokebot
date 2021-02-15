@@ -92,7 +92,7 @@ dependencies = [
  "actix-service",
  "actix-threadpool",
  "actix-utils",
- "base64",
+ "base64 0.12.3",
  "bitflags",
  "brotli2",
  "bytes",
@@ -552,7 +552,7 @@ dependencies = [
  "actix-http",
  "actix-rt",
  "actix-service",
- "base64",
+ "base64 0.12.3",
  "bytes",
  "derive_more",
  "futures-core",
@@ -602,6 +602,12 @@ name = "base64"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3441f0f7b02788e948e47f457ca01f1d7e6d92c693bc132c22b087d3141c03ff"
+
+[[package]]
+name = "base64"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
 name = "bit-vec"
@@ -1573,6 +1579,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hex"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "644f9158b2f133fd50f5fb3242878846d9eb792e445c893805ff0e3824006e35"
+
+[[package]]
 name = "hostname"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1672,6 +1684,17 @@ dependencies = [
  "native-tls",
  "tokio",
  "tokio-tls",
+]
+
+[[package]]
+name = "id3"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7757528cac50df8681481dc91fd0b0e4a9886f78db9b6579d3c181d1184c7d94"
+dependencies = [
+ "bitflags",
+ "byteorder",
+ "flate2",
 ]
 
 [[package]]
@@ -1904,6 +1927,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "043175f069eda7b85febe4a74abbaeff828d9f8b448515d3151a14a3542811aa"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "metaflac"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4685bf0039a9d2919c2dbb281cba1c58d168dce58f519cbd70c468ce2c36a748"
+dependencies = [
+ "byteorder",
+ "hex",
+ "log",
 ]
 
 [[package]]
@@ -2283,6 +2317,7 @@ dependencies = [
  "askama",
  "askama_actix",
  "async-trait",
+ "base64 0.13.0",
  "derive_more",
  "futures",
  "glib",
@@ -2290,8 +2325,10 @@ dependencies = [
  "gstreamer-app",
  "gstreamer-audio",
  "humantime 2.0.1",
+ "id3",
  "log",
  "log4rs",
+ "metaflac",
  "rand",
  "serde",
  "serde_json",
@@ -2536,7 +2573,7 @@ version = "0.10.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9eaa17ac5d7b838b7503d118fa16ad88f440498bf9ffe5424e621f93190d61e"
 dependencies = [
- "base64",
+ "base64 0.12.3",
  "bytes",
  "encoding_rs",
  "futures-core",
@@ -2581,7 +2618,7 @@ version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9dab61250775933275e84053ac235621dfb739556d5c54a2f2e9313b7cf43a19"
 dependencies = [
- "base64",
+ "base64 0.12.3",
  "blake2b_simd",
  "constant_time_eq",
  "crossbeam-utils",
@@ -3049,7 +3086,8 @@ dependencies = [
 [[package]]
 name = "t4rust-derive"
 version = "0.2.0"
-source = "git+https://github.com/ReSpeak/t4rust.git#7a6eeef42904824bfe9220d196d4e23b067ac655"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05da4fefb247b3b208fe1a406c547e1be83b70bc438299f681997254a50f608e"
 dependencies = [
  "nom 5.1.2",
  "proc-macro2",
@@ -3060,8 +3098,7 @@ dependencies = [
 [[package]]
 name = "t4rust-derive"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05da4fefb247b3b208fe1a406c547e1be83b70bc438299f681997254a50f608e"
+source = "git+https://github.com/ReSpeak/t4rust.git#7a6eeef42904824bfe9220d196d4e23b067ac655"
 dependencies = [
  "nom 5.1.2",
  "proc-macro2",
@@ -3381,7 +3418,7 @@ name = "ts-bookkeeping"
 version = "0.1.0"
 source = "git+https://github.com/ReSpeak/tsclientlib#5b6da0feb88a07237448afe2f34d38cbe06f3249"
 dependencies = [
- "base64",
+ "base64 0.12.3",
  "derive_more",
  "heck",
  "itertools",
@@ -3403,7 +3440,7 @@ version = "0.1.0"
 source = "git+https://github.com/ReSpeak/tsclientlib#5b6da0feb88a07237448afe2f34d38cbe06f3249"
 dependencies = [
  "audiopus",
- "base64",
+ "base64 0.12.3",
  "futures",
  "git-testament",
  "itertools",
@@ -3433,7 +3470,7 @@ version = "0.1.0"
 source = "git+https://github.com/ReSpeak/tsclientlib#5b6da0feb88a07237448afe2f34d38cbe06f3249"
 dependencies = [
  "aes",
- "base64",
+ "base64 0.12.3",
  "bitflags",
  "curve25519-dalek",
  "eax",
@@ -3466,7 +3503,7 @@ version = "0.1.0"
 source = "git+https://github.com/ReSpeak/tsclientlib#5b6da0feb88a07237448afe2f34d38cbe06f3249"
 dependencies = [
  "arrayref",
- "base64",
+ "base64 0.12.3",
  "bitflags",
  "num-derive",
  "num-traits",
@@ -3481,7 +3518,7 @@ name = "tsproto-structs"
 version = "0.1.0"
 source = "git+https://github.com/ReSpeak/tsclientlib#5b6da0feb88a07237448afe2f34d38cbe06f3249"
 dependencies = [
- "base64",
+ "base64 0.12.3",
  "csv",
  "heck",
  "lazy_static",
@@ -3496,7 +3533,7 @@ version = "0.1.0"
 source = "git+https://github.com/ReSpeak/tsclientlib#5b6da0feb88a07237448afe2f34d38cbe06f3249"
 dependencies = [
  "arrayref",
- "base64",
+ "base64 0.12.3",
  "bitflags",
  "curve25519-dalek",
  "flakebi-ring",

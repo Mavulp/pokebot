@@ -11,7 +11,7 @@ use slog::{debug, Logger};
 pub struct AudioMetadata {
     #[serde(rename = "url")]
     pub uri: String,
-    pub webpage_url: String,
+    pub webpage_url: Option<String>,
     pub title: String,
     pub thumbnail: Option<String>,
     #[serde(default, deserialize_with = "duration_deserialize")]

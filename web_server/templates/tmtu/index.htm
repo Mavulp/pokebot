@@ -92,7 +92,14 @@
               <div class="{{ bot.state|lower }}" style="padding: 5px;">
                 {% match bot.currently_playing %}
                   {% when Some with (current) %}
-                  <p>Currently playing: <a href="{{ current.webpage_url }}">{{ current.title }}</a></p>
+                  <p>Currently playing: 
+                    {% match current.webpage_url %}
+                      {% when Some with (url) %}
+                        <a href="{{ url }}">{{ current.title }}</a>
+                      {% when None %}
+                        {{ current.title }}
+                    {% endmatch %}
+                  </p>
                   <p><strong>{{ bot.position|fmt_duration }} / {{ current.duration|fmt_duration }}</strong>
                     {% match current.duration %}
                       {% when Some with (duration) %}
@@ -127,7 +134,14 @@
                 {% for item in bot.playlist %}
                   <tr>
                     <td class="stat">{{ loop.index }}</td>
-                    <td><a href="{{ item.webpage_url }}">{{ item.title }}</a></td>
+                    <td>
+                    {% match item.webpage_url %}
+                      {% when Some with (url) %}
+                        <a href="{{ url }}">{{ item.title }}</a>
+                      {% when None %}
+                        {{ item.title }}
+                    {% endmatch %}
+                    </td>
                     <td>
                       {% let duration = item.duration %}
                       {{ duration|fmt_duration }}
@@ -139,7 +153,7 @@
             </td>
           </tr>
         {% when None %}
-        {% endmatch %}
+      {% endmatch %}
     </table>
   </body>
 </html>
