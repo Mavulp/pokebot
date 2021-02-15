@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::Serialize;
-use slog::{debug, info, warn, Logger};
+use slog::{debug, error, info, warn, Logger};
 use structopt::StructOpt;
 use tsclientlib::{data, ChannelId, ClientId, Connection, Identity, Invoker, MessageTarget};
 use xtra::{spawn::Tokio, Actor, Address, Context, Handler, Message, WeakAddress};
@@ -17,6 +17,8 @@ use crate::playlist::Playlist;
 use crate::teamspeak as ts;
 use crate::youtube_dl::AudioMetadata;
 use ts::TeamSpeakConnection;
+
+static FILE_PREFIX: &str = "file://";
 
 #[derive(Debug)]
 pub struct ChatMessage {
@@ -71,6 +73,7 @@ impl Message for MusicBotMessage {
 
 pub struct MusicBot {
     name: String,
+    music_root: Option<PathBuf>,
     identity: Identity,
     player: AudioPlayer,
     teamspeak: Option<TeamSpeakConnection>,
@@ -82,6 +85,7 @@ pub struct MusicBot {
 
 pub struct MusicBotArgs {
     pub name: String,
+    pub music_root: Option<PathBuf>,
     pub master: Option<WeakAddress<MasterBot>>,
     pub local: bool,
     pub address: String,
@@ -111,6 +115,7 @@ impl MusicBot {
         };
         let bot = Self {
             name: args.name.clone(),
+            music_root: args.music_root,
             master: args.master,
             identity: args.identity.clone(),
             player,
@@ -182,34 +187,48 @@ impl MusicBot {
     }
 
     pub async fn add_audio(&mut self, uri: String, user: String) -> anyhow::Result<()> {
-        let metadata = if uri.starts_with("file://") {
-            // TODO Add to config file
-            let root_path = "/";
-            let path = PathBuf::from(root_path);
-            let path = path.join(&uri[7..]);
+        let metadata = if uri.starts_with(FILE_PREFIX) {
+            if self.music_root.is_none() {
+                anyhow::bail!("music_root was not configured");
+            }
+
+            let path = self
+                .music_root
+                .as_ref()
+                .unwrap()
+                .join(&uri[FILE_PREFIX.len()..]);
             let path = match path.canonicalize() {
                 Ok(p) => p,
                 Err(e) => {
-                    self.send_message(format!("Invalid path: {}", e)).await?;
-                    return Err(e)?;
+                    return Err(anyhow!("Invalid path: {}", e)).into();
                 }
             };
 
             // Make sure files outside of the root path can't be accessed
-            if !path.starts_with(root_path) {
-                self.send_message(String::from("Invalid path")).await?;
+            if !path.starts_with(self.music_root.as_ref().unwrap()) || !path.is_file() {
                 return Err(anyhow!("Invalid path"));
             }
 
-            let metadata = metadata_from_file(&path, &user);
-            metadata.unwrap_or_else(|| AudioMetadata {
-                uri: format!("file://{}", path.to_string_lossy()),
-                webpage_url: None,
-                title: path.file_name().unwrap().to_string_lossy().to_string(),
-                thumbnail: None,
-                duration: None,
-                added_by: user,
-            })
+            match metadata_from_file(&path, &user) {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!(
+                        self.logger,
+                        "No metadata was found for {}: {}",
+                        path.to_string_lossy(),
+                        e
+                    );
+
+                    AudioMetadata {
+                        uri: format!("{}{}", FILE_PREFIX, path.to_string_lossy()),
+                        webpage_url: None,
+                        title: path.file_name().unwrap().to_string_lossy().to_string(),
+                        thumbnail: None,
+                        duration: None,
+                        added_by: user,
+                    }
+                }
+            }
         } else {
             match crate::youtube_dl::get_audio_download_from_url(uri, &self.logger).await {
                 Ok(mut metadata) => {
@@ -220,10 +239,8 @@ impl MusicBot {
                 }
                 Err(e) => {
                     info!(self.logger, "Failed to find audio url"; "error" => &e);
-                    self.send_message(format!("Failed to find url: {}", e))
-                        .await?;
 
-                    return Err(anyhow!(e))?;
+                    return Err(anyhow!("Failed to find url: {}", e)).into();
                 }
             }
         };
@@ -241,12 +258,16 @@ impl MusicBot {
                 format!("")
             };
 
-            self.send_message(format!(
-                "Added {}{} to playlist",
-                ts::underline(&metadata.title),
-                duration
-            ))
-            .await?;
+            if let Err(e) = self
+                .send_message(format!(
+                    "Added {}{} to playlist",
+                    ts::underline(&metadata.title),
+                    duration
+                ))
+                .await
+            {
+                error!(self.logger, "Failed to send message: {}", e);
+            }
         }
 
         Ok(())
@@ -337,11 +358,17 @@ impl MusicBot {
                 // strip bbcode tags from url
                 let url = url.join(" ").replace("[URL]", "").replace("[/URL]", "");
 
-                self.add_audio(url, invoker.name).await?;
+                if let Err(e) = self.add_audio(url, invoker.name).await {
+                    self.send_message(format!("Failed to add: {}", e)).await?;
+                }
             }
             Command::Search { query } => {
-                self.add_audio(format!("ytsearch:{}", query.join(" ")), invoker.name)
-                    .await?;
+                if let Err(e) = self
+                    .add_audio(format!("ytsearch:{}", query.join(" ")), invoker.name)
+                    .await
+                {
+                    self.send_message(format!("Failed to add: {}", e)).await?;
+                }
             }
             Command::Pause => {
                 self.player.pause()?;
@@ -598,10 +625,10 @@ impl Handler<MusicBotMessage> for MusicBot {
     }
 }
 
-fn metadata_from_file(path: &Path, user: &str) -> Option<AudioMetadata> {
+fn metadata_from_file(path: &Path, user: &str) -> Result<AudioMetadata, anyhow::Error> {
     match path.extension().and_then(|s| s.to_str()) {
         Some("mp3") => {
-            let tag = id3::Tag::read_from_path(&path).ok()?;
+            let tag = id3::Tag::read_from_path(&path)?;
             let title = match (tag.title(), tag.artist()) {
                 (Some(title), Some(artist)) => format!("{} - {}", title, artist),
                 (Some(title), _) => title.to_owned(),
@@ -611,6 +638,8 @@ fn metadata_from_file(path: &Path, user: &str) -> Option<AudioMetadata> {
             let mut cover = None;
             for picture in tag.pictures() {
                 if picture.picture_type == id3::frame::PictureType::CoverFront {
+                    // The image type might be wrong but it does not seem like the big browsers
+                    // care so finding the correct type does not seem like it is worth the effort.
                     cover = Some(format!(
                         "data:image/jpg;base64,{}",
                         base64::encode(&picture.data)
@@ -618,8 +647,8 @@ fn metadata_from_file(path: &Path, user: &str) -> Option<AudioMetadata> {
                 }
             }
 
-            return Some(AudioMetadata {
-                uri: format!("file://{}", path.to_string_lossy()),
+            return Ok(AudioMetadata {
+                uri: format!("{}{}", FILE_PREFIX, path.to_string_lossy()),
                 webpage_url: None,
                 title,
                 thumbnail: cover,
@@ -628,8 +657,10 @@ fn metadata_from_file(path: &Path, user: &str) -> Option<AudioMetadata> {
             });
         }
         Some("flac") => {
-            let tag = metaflac::Tag::read_from_path(&path).ok()?;
-            let comments = &tag.vorbis_comments()?;
+            let tag = metaflac::Tag::read_from_path(&path)?;
+            let comments = &tag
+                .vorbis_comments()
+                .ok_or_else(|| anyhow!("no vorbis comments found"))?;
             let title = match (comments.title(), comments.artist()) {
                 (Some(title), Some(artist)) => {
                     format!("{} - {}", title.join(";"), artist.join(";"))
@@ -648,8 +679,8 @@ fn metadata_from_file(path: &Path, user: &str) -> Option<AudioMetadata> {
                 }
             }
 
-            return Some(AudioMetadata {
-                uri: format!("file://{}", path.to_string_lossy()),
+            return Ok(AudioMetadata {
+                uri: format!("{}{}", FILE_PREFIX, path.to_string_lossy()),
                 webpage_url: None,
                 title,
                 thumbnail: cover,
@@ -660,7 +691,9 @@ fn metadata_from_file(path: &Path, user: &str) -> Option<AudioMetadata> {
         _ => (),
     }
 
-    None
+    Err(anyhow!(
+        "file does not contain metadata or filetype is unknown"
+    ))
 }
 
 fn spawn_stdin_reader(addr: Address<MusicBot>) {
