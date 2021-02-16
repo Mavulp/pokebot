@@ -90,7 +90,7 @@ async fn main() {
     }
 }
 
-async fn run(root_logger: Logger) -> Result<(), Box<dyn std::error::Error>> {
+async fn run(root_logger: Logger) -> Result<(), anyhow::Error> {
     // Parse command line options
     let args = Args::from_args();
 
@@ -108,6 +108,12 @@ async fn run(root_logger: Logger) -> Result<(), Box<dyn std::error::Error>> {
     file.read_to_string(&mut toml)?;
 
     let mut config: MasterArgs = toml::from_str(&toml)?;
+
+    if let Some(music_root) = &config.music_root {
+        if !music_root.is_dir() {
+            anyhow::bail!("music_root is not a directory");
+        }
+    }
 
     if config.id.is_none() {
         let id = Identity::create().expect("Failed to create id");
@@ -172,6 +178,7 @@ async fn run(root_logger: Logger) -> Result<(), Box<dyn std::error::Error>> {
 
         let bot_args = MusicBotArgs {
             name,
+            music_root: bot_args.music_root,
             master: None,
             local: true,
             address: bot_args.address.clone(),

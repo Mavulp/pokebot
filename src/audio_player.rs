@@ -20,7 +20,7 @@ static GST_INIT: Once = Once::new();
 pub struct AudioPlayer {
     pipeline: gst::Pipeline,
     bus: gst::Bus,
-    http_src: gst::Element,
+    uri_src: gst::Element,
 
     volume_f64: f64,
     volume: gst::Element,
@@ -34,19 +34,13 @@ fn make_element(factoryname: &str, display_name: &str) -> Result<gst::Element, A
         .map_err(|_| AudioPlayerError::MissingPlugin(factoryname.to_string()))?)
 }
 
-fn link_elements(a: &gst::Element, b: &gst::Element) -> Result<(), AudioPlayerError> {
-    a.link(b)?;
-
-    Ok(())
-}
-
-fn add_decode_bin_new_pad_callback(
-    decode_bin: &gst::Element,
+fn add_uri_src_new_pad_callback(
+    uri_src: &gst::Element,
     audio_bin: gst::Bin,
     ghost_pad: gst::GhostPad,
     logger: Logger,
 ) {
-    decode_bin.connect_pad_added(move |_, new_pad| {
+    uri_src.connect_pad_added(move |_, new_pad| {
         debug!(logger, "New pad received on decode bin");
         let name = if let Some(caps) = new_pad.get_current_caps() {
             debug!(logger, "Found caps"; "caps" => caps.to_string());
@@ -80,7 +74,7 @@ impl AudioPlayer {
 
         let pipeline = gst::Pipeline::new(Some("TeamSpeak Audio Player"));
         let bus = pipeline.get_bus().unwrap();
-        let http_src = make_element("souphttpsrc", "http source")?;
+        let uri_src = make_element("uridecodebin", "uri source")?;
         let volume = make_element("volume", "volume")?;
 
         // The documentation says that we have to make sure to handle
@@ -94,9 +88,8 @@ impl AudioPlayer {
         Ok(AudioPlayer {
             pipeline,
             bus,
-            http_src,
+            uri_src,
             logger,
-
             volume_f64: 0.0,
             volume,
             currently_playing: None,
@@ -107,10 +100,7 @@ impl AudioPlayer {
         &self,
         callback: Option<Box<dyn FnMut(&[u8]) + Send>>,
     ) -> Result<(), AudioPlayerError> {
-        let decode_bin = make_element("decodebin", "decode bin")?;
-        self.pipeline.add_many(&[&self.http_src, &decode_bin])?;
-
-        link_elements(&self.http_src, &decode_bin)?;
+        self.pipeline.add(&self.uri_src)?;
 
         let audio_bin = gst::Bin::new(Some("audio bin"));
         let queue = make_element("queue", "audio queue")?;
@@ -160,7 +150,7 @@ impl AudioPlayer {
         } else {
             let sink = make_element("autoaudiosink", "auto audio sink")?;
 
-            audio_bin.add_many(&[&sink])?;
+            audio_bin.add(&sink)?;
 
             gst::Element::link_many(&[&queue, &convert, &self.volume, &resample, &sink])?;
         };
@@ -169,8 +159,8 @@ impl AudioPlayer {
         ghost_pad.set_active(true)?;
         audio_bin.add_pad(&ghost_pad)?;
 
-        add_decode_bin_new_pad_callback(
-            &decode_bin,
+        add_uri_src_new_pad_callback(
+            &self.uri_src,
             audio_bin.clone(),
             ghost_pad,
             self.logger.clone(),
@@ -182,16 +172,15 @@ impl AudioPlayer {
     }
 
     pub fn set_metadata(&mut self, data: AudioMetadata) -> Result<(), AudioPlayerError> {
-        self.set_source_url(data.url.clone())?;
-
+        self.set_source_uri(data.uri.clone())?;
         self.currently_playing = Some(data);
 
         Ok(())
     }
 
-    fn set_source_url(&self, location: String) -> Result<(), AudioPlayerError> {
-        info!(self.logger, "Setting source"; "url" => &location);
-        self.http_src.set_property("location", &location)?;
+    fn set_source_uri(&self, location: String) -> Result<(), AudioPlayerError> {
+        info!(self.logger, "Setting source"; "uri" => &location);
+        self.uri_src.set_property("uri", &location)?;
 
         Ok(())
     }

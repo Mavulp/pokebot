@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use async_trait::async_trait;
 use futures::future;
@@ -29,6 +30,7 @@ pub struct MasterBot {
 pub struct MasterArgs {
     #[serde(default = "default_name")]
     pub master_name: String,
+    pub music_root: Option<PathBuf>,
     pub address: String,
     pub channel: Option<String>,
     pub volume: f64,
@@ -64,6 +66,7 @@ impl MasterBot {
 
         let config = MasterConfig {
             master_name: args.master_name,
+            music_root: args.music_root,
             address: args.address,
             verbose: args.verbose,
             volume: args.volume,
@@ -138,6 +141,7 @@ impl MasterBot {
 
         Ok(MusicBotArgs {
             name: name.clone(),
+            music_root: self.config.music_root.clone(),
             master: self.my_addr.clone(),
             address: self.config.address.clone(),
             identity,
@@ -344,6 +348,7 @@ impl MasterArgs {
 
         Self {
             master_name: self.master_name,
+            music_root: self.music_root,
             names: self.names,
             ids: self.ids,
             address,
@@ -360,6 +365,7 @@ impl MasterArgs {
 
 pub struct MasterConfig {
     pub master_name: String,
+    pub music_root: Option<PathBuf>,
     pub address: String,
     pub verbose: u8,
     pub volume: f64,

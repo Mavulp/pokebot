@@ -44,7 +44,12 @@
             <img src="{{ thumbnail }}" class="thumbnail">
           {% when None %}
         {% endmatch %}
-        <a href="{{ current.webpage_url }}">{{ current.title }}</a>
+        {% match current.webpage_url %}
+          {% when Some with (url) %}
+            <a href="{{ url }}">{{ current.title }}</a>
+          {% when None %}
+            {{ current.title }}
+        {% endmatch %}
         <span>({{ current.duration|fmt_duration }})</span>
       {% when None %}
     {% endmatch %}
@@ -60,7 +65,14 @@
       {% for item in bot.playlist %}
       <tr>
         <td class="stat">{{ loop.index }}</td>
-        <td><a href="{{ item.webpage_url }}">{{ item.title }}</a></td>
+        <td>
+          {% match item.webpage_url %}
+            {% when Some with (url) %}
+              <a href="{{ url }}">{{ item.title }}</a>
+            {% when None %}
+              {{ item.title }}
+          {% endmatch %}
+        </td>
         <td>
           {% let duration = item.duration %}
           {{ duration|fmt_duration }}

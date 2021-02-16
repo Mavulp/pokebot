@@ -16,7 +16,7 @@ use structopt::StructOpt;
 )]
 pub enum Command {
     /// Adds url to playlist
-    Add { url: String },
+    Add { url: Vec<String> },
     /// Adds the first video found on YouTube
     Search { query: Vec<String> },
     /// Starts audio playback

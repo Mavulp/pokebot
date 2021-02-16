@@ -1,7 +1,10 @@
-use async_trait::async_trait;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
+use anyhow::anyhow;
+use async_trait::async_trait;
 use serde::Serialize;
-use slog::{debug, info, warn, Logger};
+use slog::{debug, error, info, warn, Logger};
 use structopt::StructOpt;
 use tsclientlib::{data, ChannelId, ClientId, Connection, Identity, Invoker, MessageTarget};
 use xtra::{spawn::Tokio, Actor, Address, Context, Handler, Message, WeakAddress};
@@ -12,8 +15,10 @@ use crate::command::Command;
 use crate::command::VolumeChange;
 use crate::playlist::Playlist;
 use crate::teamspeak as ts;
-use crate::youtube_dl::{self, AudioMetadata};
+use crate::youtube_dl::AudioMetadata;
 use ts::TeamSpeakConnection;
+
+static FILE_PREFIX: &str = "file://";
 
 #[derive(Debug)]
 pub struct ChatMessage {
@@ -68,6 +73,7 @@ impl Message for MusicBotMessage {
 
 pub struct MusicBot {
     name: String,
+    music_root: Option<PathBuf>,
     identity: Identity,
     player: AudioPlayer,
     teamspeak: Option<TeamSpeakConnection>,
@@ -79,6 +85,7 @@ pub struct MusicBot {
 
 pub struct MusicBotArgs {
     pub name: String,
+    pub music_root: Option<PathBuf>,
     pub master: Option<WeakAddress<MasterBot>>,
     pub local: bool,
     pub address: String,
@@ -92,7 +99,9 @@ pub struct MusicBotArgs {
 impl MusicBot {
     pub async fn spawn(args: MusicBotArgs) -> Address<Self> {
         let mut player = AudioPlayer::new(args.logger.clone()).unwrap();
-        player.change_volume(VolumeChange::Absolute(args.volume)).unwrap();
+        player
+            .change_volume(VolumeChange::Absolute(args.volume))
+            .unwrap();
 
         let playlist = Playlist::new(args.logger.clone());
 
@@ -106,6 +115,7 @@ impl MusicBot {
         };
         let bot = Self {
             name: args.name.clone(),
+            music_root: args.music_root,
             master: args.master,
             identity: args.identity.clone(),
             player,
@@ -117,13 +127,17 @@ impl MusicBot {
 
         let bot_addr = bot.create(None).spawn(&mut Tokio::Global);
 
-        info!(
-            args.logger,
-            "Connecting";
-            "name" => &args.name,
-            "channel" => &args.channel,
-            "address" => &args.address,
-        );
+        if args.local {
+            info!(args.logger, "Starting in local mode");
+        } else {
+            info!(
+                args.logger,
+                "Connecting";
+                "name" => &args.name,
+                "channel" => &args.channel,
+                "address" => &args.address,
+            );
+        }
 
         let opt = Connection::build(args.address)
             .logger(args.logger.clone())
@@ -135,16 +149,17 @@ impl MusicBot {
             .log_udp_packets(args.verbose >= 3)
             .channel(args.channel);
         bot_addr.send(Connect(opt)).await.unwrap().unwrap();
+
+        if args.local {
+            debug!(args.logger, "Spawning stdin reader thread");
+            spawn_stdin_reader(bot_addr.clone());
+        }
+
         bot_addr
             .send(MusicBotMessage::StateChange(State::EndOfStream))
             .await
             .unwrap()
             .unwrap();
-
-        if args.local {
-            debug!(args.logger, "Spawning stdin reader thread");
-            spawn_stdin_reader(bot_addr.downgrade());
-        }
 
         bot_addr
     }
@@ -171,39 +186,87 @@ impl MusicBot {
         Ok(())
     }
 
-    pub async fn add_audio(&mut self, url: String, user: String) -> anyhow::Result<()> {
-        match youtube_dl::get_audio_download_from_url(url, &self.logger).await {
-            Ok(mut metadata) => {
-                metadata.added_by = user;
-                info!(self.logger, "Found source"; "url" => &metadata.url);
+    pub async fn add_audio(&mut self, uri: String, user: String) -> anyhow::Result<()> {
+        let metadata = if uri.starts_with(FILE_PREFIX) {
+            if self.music_root.is_none() {
+                anyhow::bail!("music_root was not configured");
+            }
 
-                self.playlist.push(metadata.clone());
+            let path = self
+                .music_root
+                .as_ref()
+                .unwrap()
+                .join(&uri[FILE_PREFIX.len()..]);
+            let path = match path.canonicalize() {
+                Ok(p) => p,
+                Err(e) => {
+                    return Err(anyhow!("Invalid path: {}", e)).into();
+                }
+            };
 
-                if !self.player.is_started() {
-                    let entry = self.playlist.pop();
-                    if let Some(request) = entry {
-                        self.start_playing_audio(request).await?;
+            // Make sure files outside of the root path can't be accessed
+            if !path.starts_with(self.music_root.as_ref().unwrap()) || !path.is_file() {
+                return Err(anyhow!("Invalid path"));
+            }
+
+            match metadata_from_file(&path, &user) {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!(
+                        self.logger,
+                        "No metadata was found for {}: {}",
+                        path.to_string_lossy(),
+                        e
+                    );
+
+                    AudioMetadata {
+                        uri: format!("{}{}", FILE_PREFIX, path.to_string_lossy()),
+                        webpage_url: None,
+                        title: path.file_name().unwrap().to_string_lossy().to_string(),
+                        thumbnail: None,
+                        duration: None,
+                        added_by: user,
                     }
-                } else {
-                    let duration = if let Some(duration) = metadata.duration {
-                        format!(" ({})", ts::bold(&humantime::format_duration(duration)))
-                    } else {
-                        format!("")
-                    };
-
-                    self.send_message(format!(
-                        "Added {}{} to playlist",
-                        ts::underline(&metadata.title),
-                        duration
-                    ))
-                    .await?;
                 }
             }
-            Err(e) => {
-                info!(self.logger, "Failed to find audio url"; "error" => &e);
+        } else {
+            match crate::youtube_dl::get_audio_download_from_url(uri, &self.logger).await {
+                Ok(mut metadata) => {
+                    metadata.added_by = user;
+                    info!(self.logger, "Found source"; "uri" => &metadata.uri);
 
-                self.send_message(format!("Failed to find url: {}", e))
-                    .await?;
+                    metadata
+                }
+                Err(e) => {
+                    info!(self.logger, "Failed to find audio url"; "error" => &e);
+
+                    return Err(anyhow!("Failed to find url: {}", e)).into();
+                }
+            }
+        };
+
+        self.playlist.push(metadata.clone());
+
+        if !self.player.is_started() {
+            if let Some(request) = self.playlist.pop() {
+                self.start_playing_audio(request).await?;
+            }
+        } else {
+            let duration = if let Some(duration) = metadata.duration {
+                format!(" ({})", ts::bold(&humantime::format_duration(duration)))
+            } else {
+                format!("")
+            };
+
+            if let Err(e) = self
+                .send_message(format!(
+                    "Added {}{} to playlist",
+                    ts::underline(&metadata.title),
+                    duration
+                ))
+                .await
+            {
+                error!(self.logger, "Failed to send message: {}", e);
             }
         }
 
@@ -280,6 +343,7 @@ impl MusicBot {
     }
 
     async fn on_command(&mut self, command: Command, invoker: Invoker) -> anyhow::Result<()> {
+        debug!(self.logger, "User command: {:?}", command);
         match command {
             Command::Play => {
                 if !self.player.is_started() {
@@ -292,13 +356,19 @@ impl MusicBot {
             }
             Command::Add { url } => {
                 // strip bbcode tags from url
-                let url = url.replace("[URL]", "").replace("[/URL]", "");
+                let url = url.join(" ").replace("[URL]", "").replace("[/URL]", "");
 
-                self.add_audio(url.to_string(), invoker.name).await?;
+                if let Err(e) = self.add_audio(url, invoker.name).await {
+                    self.send_message(format!("Failed to add: {}", e)).await?;
+                }
             }
             Command::Search { query } => {
-                self.add_audio(format!("ytsearch:{}", query.join(" ")), invoker.name)
-                    .await?;
+                if let Err(e) = self
+                    .add_audio(format!("ytsearch:{}", query.join(" ")), invoker.name)
+                    .await
+                {
+                    self.send_message(format!("Failed to add: {}", e)).await?;
+                }
             }
             Command::Pause => {
                 self.player.pause()?;
@@ -443,8 +513,9 @@ impl MusicBot {
         // change its name and description
         self.player.reset().unwrap();
 
-        let ts = self.teamspeak.as_mut().unwrap();
-        ts.disconnect(&reason).await?;
+        if let Some(ts) = self.teamspeak.as_mut() {
+            ts.disconnect(&reason).await?;
+        }
 
         if inform_master {
             if let Some(master) = &self.master {
@@ -474,20 +545,18 @@ impl Actor for MusicBot {
 impl Handler<Connect> for MusicBot {
     async fn handle(&mut self, opt: Connect, ctx: &mut Context<Self>) -> anyhow::Result<()> {
         let addr = ctx.address().unwrap().downgrade();
-        self.teamspeak
-            .as_mut()
-            .unwrap()
-            .connect_for_bot(opt.0, addr)?;
-
-        let mut connection = self.teamspeak.as_ref().unwrap().clone();
-        let handle = tokio::runtime::Handle::current();
-        self.player
-            .setup_with_audio_callback(Some(Box::new(move |samples| {
-                handle
-                    .block_on(connection.send_audio_packet(samples))
-                    .unwrap();
-            })))
-            .unwrap();
+        if let Some(ts) = self.teamspeak.as_mut() {
+            ts.connect_for_bot(opt.0, addr)?;
+            let mut connection = ts.clone();
+            let handle = tokio::runtime::Handle::current();
+            self.player
+                .setup_with_audio_callback(Some(Box::new(move |samples| {
+                    handle
+                        .block_on(connection.send_audio_packet(samples))
+                        .unwrap();
+                })))
+                .unwrap();
+        }
 
         Ok(())
     }
@@ -556,7 +625,78 @@ impl Handler<MusicBotMessage> for MusicBot {
     }
 }
 
-fn spawn_stdin_reader(addr: WeakAddress<MusicBot>) {
+fn metadata_from_file(path: &Path, user: &str) -> Result<AudioMetadata, anyhow::Error> {
+    match path.extension().and_then(|s| s.to_str()) {
+        Some("mp3") => {
+            let tag = id3::Tag::read_from_path(&path)?;
+            let title = match (tag.title(), tag.artist()) {
+                (Some(title), Some(artist)) => format!("{} - {}", title, artist),
+                (Some(title), _) => title.to_owned(),
+                (_, _) => path.file_name().unwrap().to_string_lossy().to_string(),
+            };
+
+            let mut cover = None;
+            for picture in tag.pictures() {
+                if picture.picture_type == id3::frame::PictureType::CoverFront {
+                    // The image type might be wrong but it does not seem like the big browsers
+                    // care so finding the correct type does not seem like it is worth the effort.
+                    cover = Some(format!(
+                        "data:image/jpg;base64,{}",
+                        base64::encode(&picture.data)
+                    ));
+                }
+            }
+
+            return Ok(AudioMetadata {
+                uri: format!("{}{}", FILE_PREFIX, path.to_string_lossy()),
+                webpage_url: None,
+                title,
+                thumbnail: cover,
+                duration: tag.duration().map(|s| Duration::from_millis(s as u64)),
+                added_by: user.to_owned(),
+            });
+        }
+        Some("flac") => {
+            let tag = metaflac::Tag::read_from_path(&path)?;
+            let comments = &tag
+                .vorbis_comments()
+                .ok_or_else(|| anyhow!("no vorbis comments found"))?;
+            let title = match (comments.title(), comments.artist()) {
+                (Some(title), Some(artist)) => {
+                    format!("{} - {}", title.join(";"), artist.join(";"))
+                }
+                (Some(title), _) => title.join(";"),
+                (_, _) => path.file_name().unwrap().to_string_lossy().to_string(),
+            };
+
+            let mut cover = None;
+            for picture in tag.pictures() {
+                if picture.picture_type == metaflac::block::PictureType::CoverFront {
+                    cover = Some(format!(
+                        "data:image/jpg;base64,{}",
+                        base64::encode(&picture.data)
+                    ));
+                }
+            }
+
+            return Ok(AudioMetadata {
+                uri: format!("{}{}", FILE_PREFIX, path.to_string_lossy()),
+                webpage_url: None,
+                title,
+                thumbnail: cover,
+                duration: None,
+                added_by: user.to_owned(),
+            });
+        }
+        _ => (),
+    }
+
+    Err(anyhow!(
+        "file does not contain metadata or filetype is unknown"
+    ))
+}
+
+fn spawn_stdin_reader(addr: Address<MusicBot>) {
     use tokio::io::AsyncBufReadExt;
 
     tokio::task::spawn(async move {
