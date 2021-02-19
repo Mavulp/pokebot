@@ -1,12 +1,14 @@
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::Serialize;
-use slog::{debug, error, info, warn, Logger};
+use slog::{debug, error, info, trace, warn, Logger};
 use structopt::StructOpt;
 use tsclientlib::{data, ChannelId, ClientId, Connection, Identity, Invoker, MessageTarget};
+use walkdir::WalkDir;
 use xtra::{spawn::Tokio, Actor, Address, Context, Handler, Message, WeakAddress};
 
 use crate::audio_player::AudioPlayer;
@@ -69,6 +71,12 @@ pub enum MusicBotMessage {
 
 impl Message for MusicBotMessage {
     type Result = anyhow::Result<()>;
+}
+
+pub enum AudioLocation {
+    Url(String),
+    YoutubeSearch(String),
+    Path(PathBuf),
 }
 
 pub struct MusicBot {
@@ -164,115 +172,6 @@ impl MusicBot {
         bot_addr
     }
 
-    async fn start_playing_audio(&mut self, metadata: AudioMetadata) -> anyhow::Result<()> {
-        let duration = if let Some(duration) = metadata.duration {
-            format!("({})", ts::bold(&humantime::format_duration(duration)))
-        } else {
-            format!("")
-        };
-
-        self.send_message(format!(
-            "Playing {} {}",
-            ts::underline(&metadata.title),
-            duration
-        ))
-        .await?;
-        self.set_description(format!("Currently playing '{}'", metadata.title))
-            .await;
-        self.player.reset().unwrap();
-        self.player.set_metadata(metadata).unwrap();
-        self.player.play().unwrap();
-
-        Ok(())
-    }
-
-    pub async fn add_audio(&mut self, uri: String, user: String) -> anyhow::Result<()> {
-        let metadata = if uri.starts_with(FILE_PREFIX) {
-            if self.music_root.is_none() {
-                anyhow::bail!("music_root was not configured");
-            }
-
-            let path = self
-                .music_root
-                .as_ref()
-                .unwrap()
-                .join(&uri[FILE_PREFIX.len()..]);
-            let path = match path.canonicalize() {
-                Ok(p) => p,
-                Err(e) => {
-                    return Err(anyhow!("Invalid path: {}", e)).into();
-                }
-            };
-
-            // Make sure files outside of the root path can't be accessed
-            if !path.starts_with(self.music_root.as_ref().unwrap()) || !path.is_file() {
-                return Err(anyhow!("Invalid path"));
-            }
-
-            match metadata_from_file(&path, &user) {
-                Ok(m) => m,
-                Err(e) => {
-                    warn!(
-                        self.logger,
-                        "No metadata was found for {}: {}",
-                        path.to_string_lossy(),
-                        e
-                    );
-
-                    AudioMetadata {
-                        uri: format!("{}{}", FILE_PREFIX, path.to_string_lossy()),
-                        webpage_url: None,
-                        title: path.file_name().unwrap().to_string_lossy().to_string(),
-                        thumbnail: None,
-                        duration: None,
-                        added_by: user,
-                    }
-                }
-            }
-        } else {
-            match crate::youtube_dl::get_audio_download_from_url(uri, &self.logger).await {
-                Ok(mut metadata) => {
-                    metadata.added_by = user;
-                    info!(self.logger, "Found source"; "uri" => &metadata.uri);
-
-                    metadata
-                }
-                Err(e) => {
-                    info!(self.logger, "Failed to find audio url"; "error" => &e);
-
-                    return Err(anyhow!("Failed to find url: {}", e)).into();
-                }
-            }
-        };
-
-        self.playlist.push(metadata.clone());
-
-        if !self.player.is_started() {
-            if let Some(request) = self.playlist.pop() {
-                self.start_playing_audio(request).await?;
-            }
-        } else {
-            let duration = if let Some(duration) = metadata.duration {
-                format!(" ({})", ts::bold(&humantime::format_duration(duration)))
-            } else {
-                format!("")
-            };
-
-            if let Err(e) = self
-                .send_message(format!(
-                    "Added {}{} to playlist",
-                    ts::underline(&metadata.title),
-                    duration
-                ))
-                .await
-            {
-                error!(self.logger, "Failed to send message: {}", e);
-            }
-        }
-
-        Ok(())
-    }
-
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -358,15 +257,24 @@ impl MusicBot {
                 // strip bbcode tags from url
                 let url = url.join(" ").replace("[URL]", "").replace("[/URL]", "");
 
-                if let Err(e) = self.add_audio(url, invoker.name).await {
+                let location = if url.starts_with(FILE_PREFIX) {
+                    AudioLocation::Path(PathBuf::from(&url[FILE_PREFIX.len()..]))
+                } else {
+                    AudioLocation::Url(url)
+                };
+
+                if let Err(e) = self.add_audio(location, invoker.name).await {
                     self.send_message(format!("Failed to add: {}", e)).await?;
                 }
             }
             Command::Search { query } => {
-                if let Err(e) = self
-                    .add_audio(format!("ytsearch:{}", query.join(" ")), invoker.name)
-                    .await
-                {
+                let location = if let Some(path) = self.find_local_file(&query).await {
+                    AudioLocation::Path(path)
+                } else {
+                    AudioLocation::YoutubeSearch(query.join(" "))
+                };
+
+                if let Err(e) = self.add_audio(location, invoker.name).await {
                     self.send_message(format!("Failed to add: {}", e)).await?;
                 }
             }
@@ -411,6 +319,183 @@ impl MusicBot {
         Ok(())
     }
 
+    pub async fn add_audio(&mut self, location: AudioLocation, user: String) -> anyhow::Result<()> {
+        let metadata = match location {
+            AudioLocation::Path(rel_path) => {
+                if self.music_root.is_none() {
+                    anyhow::bail!("music_root was not configured");
+                }
+
+                let path = self.music_root.as_ref().unwrap().join(rel_path);
+                let path = match path.canonicalize() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        return Err(anyhow!("Invalid path: {}", e)).into();
+                    }
+                };
+
+                // Make sure files outside of the root path can't be accessed
+                if !path.starts_with(self.music_root.as_ref().unwrap()) || !path.is_file() {
+                    return Err(anyhow!("Invalid path"));
+                }
+
+                match metadata_from_file(&path, &user) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        warn!(
+                            self.logger,
+                            "No metadata was found for {}: {}",
+                            path.to_string_lossy(),
+                            e
+                        );
+
+                        AudioMetadata {
+                            // FIXME: Since we use a rust string non-utf8 file names
+                            // will not work as expected
+                            uri: format!("{}{}", FILE_PREFIX, path.to_string_lossy()),
+                            webpage_url: None,
+                            title: path.file_name().unwrap().to_string_lossy().to_string(),
+                            thumbnail: None,
+                            duration: None,
+                            added_by: user,
+                        }
+                    }
+                }
+            }
+            AudioLocation::YoutubeSearch(query) => {
+                self.get_url_from_ytdl(format!("ytsearch:{}", query), user)
+                    .await?
+            }
+            AudioLocation::Url(query) => self.get_url_from_ytdl(query, user).await?,
+        };
+
+        self.playlist.push(metadata.clone());
+
+        if !self.player.is_started() {
+            if let Some(request) = self.playlist.pop() {
+                self.start_playing_audio(request).await?;
+            }
+        } else {
+            let duration = if let Some(duration) = metadata.duration {
+                format!(" ({})", ts::bold(&humantime::format_duration(duration)))
+            } else {
+                format!("")
+            };
+
+            if let Err(e) = self
+                .send_message(format!(
+                    "Added {}{} to playlist",
+                    ts::underline(&metadata.title),
+                    duration
+                ))
+                .await
+            {
+                error!(self.logger, "Failed to send message: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn get_url_from_ytdl(
+        &self,
+        query: String,
+        user: String,
+    ) -> anyhow::Result<AudioMetadata> {
+        match crate::youtube_dl::get_audio_download_from_url(query, &self.logger).await {
+            Ok(mut metadata) => {
+                metadata.added_by = user;
+                info!(self.logger, "Found source"; "uri" => &metadata.uri);
+
+                Ok(metadata)
+            }
+            Err(e) => {
+                info!(self.logger, "Failed to find audio url"; "error" => &e);
+
+                Err(anyhow!("Failed to find url: {}", e)).into()
+            }
+        }
+    }
+
+    async fn start_playing_audio(&mut self, metadata: AudioMetadata) -> anyhow::Result<()> {
+        let duration = if let Some(duration) = metadata.duration {
+            format!("({})", ts::bold(&humantime::format_duration(duration)))
+        } else {
+            format!("")
+        };
+
+        self.send_message(format!(
+            "Playing {} {}",
+            ts::underline(&metadata.title),
+            duration
+        ))
+        .await?;
+        self.set_description(format!("Currently playing '{}'", metadata.title))
+            .await;
+        self.player.reset().unwrap();
+        self.player.set_metadata(metadata).unwrap();
+        self.player.play().unwrap();
+
+        Ok(())
+    }
+
+    async fn find_local_file(&self, query: &Vec<String>) -> Option<PathBuf> {
+        let known_exts = [OsStr::new("mp3"), OsStr::new("flac")];
+
+        if let Some(music_root) = &self.music_root {
+            let mut largest = (None, 0);
+
+            'outer: for entry in WalkDir::new(music_root) {
+                if let Err(e) = entry {
+                    warn!(self.logger, "Failed to access file system entry: {}", e);
+                    continue;
+                }
+                let entry = entry.unwrap();
+
+                if !entry.file_type().is_file()
+                    || entry
+                        .path()
+                        .extension()
+                        .map(|e| !known_exts.contains(&e))
+                        .unwrap_or(true)
+                {
+                    continue;
+                }
+
+                let rel_path = entry
+                    .path()
+                    .strip_prefix(music_root)
+                    .expect("WalkDir only walks music_dir");
+
+                let path_str = match rel_path.to_str() {
+                    Some(path) => path,
+                    None => continue,
+                };
+
+                let mut score = 0;
+                let lowered_path = path_str.to_lowercase();
+                for word in query {
+                    let found = lowered_path.match_indices(&word.to_lowercase()).count();
+                    if found == 0 {
+                        continue 'outer;
+                    }
+
+                    score += found;
+                }
+
+                if score > largest.1 {
+                    trace!(self.logger, "Found better score {} for {}", score, path_str);
+                    largest = (Some(rel_path.to_path_buf()), score);
+                }
+            }
+            if let Some(path) = largest.0 {
+                return Some(path);
+            }
+        }
+
+        None
+    }
+
     async fn update_name(&mut self, state: State) -> anyhow::Result<()> {
         let volume = (self.volume().await * 100.0).round();
         let name = match state {
@@ -419,6 +504,32 @@ impl MusicBot {
         };
 
         self.set_nickname(name).await
+    }
+
+    async fn on_message(&mut self, message: MusicBotMessage) -> anyhow::Result<()> {
+        match message {
+            MusicBotMessage::TextMessage(message) => {
+                if MessageTarget::Channel == message.target {
+                    self.on_text(message).await?;
+                }
+            }
+            MusicBotMessage::ClientChannel {
+                client,
+                old_channel,
+            } => {
+                self.on_client_left_channel(client, old_channel).await?;
+            }
+            MusicBotMessage::ClientDisconnected { id, client } => {
+                let old_channel = client.channel;
+                self.on_client_left_channel(id, old_channel).await?;
+            }
+            MusicBotMessage::StateChange(state) => {
+                self.on_state(state).await?;
+            }
+            _ => (),
+        }
+
+        Ok(())
     }
 
     async fn on_state(&mut self, new_state: State) -> anyhow::Result<()> {
@@ -448,32 +559,6 @@ impl MusicBot {
 
         if !(self.state == State::EndOfStream && new_state == State::Stopped) {
             self.state = new_state;
-        }
-
-        Ok(())
-    }
-
-    async fn on_message(&mut self, message: MusicBotMessage) -> anyhow::Result<()> {
-        match message {
-            MusicBotMessage::TextMessage(message) => {
-                if MessageTarget::Channel == message.target {
-                    self.on_text(message).await?;
-                }
-            }
-            MusicBotMessage::ClientChannel {
-                client,
-                old_channel,
-            } => {
-                self.on_client_left_channel(client, old_channel).await?;
-            }
-            MusicBotMessage::ClientDisconnected { id, client } => {
-                let old_channel = client.channel;
-                self.on_client_left_channel(id, old_channel).await?;
-            }
-            MusicBotMessage::StateChange(state) => {
-                self.on_state(state).await?;
-            }
-            _ => (),
         }
 
         Ok(())
