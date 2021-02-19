@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::thread;
 
 use slog::{debug, error, info, o, Drain, Logger};
+use slog_async::OverflowStrategy;
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
 #[cfg(unix)]
@@ -73,7 +74,10 @@ async fn main() {
         let config = log4rs::load_config_file("log4rs.yml", Default::default()).unwrap();
         let drain = LogBridge(log4rs::Logger::new(config)).fuse();
         // slog_async adds a channel because log4rs if not unwind safe
-        let drain = slog_async::Async::new(drain).build().fuse();
+        let drain = slog_async::Async::new(drain)
+            .overflow_strategy(OverflowStrategy::Block)
+            .build()
+            .fuse();
 
         Logger::root(drain, o!())
     };
