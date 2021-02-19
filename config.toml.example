@@ -1,6 +1,10 @@
 # Name of the master bot
 master_name = "PokeBot"
 
+# If you want to enable access to local files you can set the absolute path
+# to the folder with those files here.
+#music_root = "/music"
+
 # Address of the server to connect to
 address = "localhost"
 
