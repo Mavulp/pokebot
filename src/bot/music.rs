@@ -382,14 +382,21 @@ impl MusicBot {
                 format!("")
             };
 
-            if let Err(e) = self
-                .send_message(format!(
+            let msg = if metadata.uri.starts_with(FILE_PREFIX) {
+                format!(
+                    "Added local file {}{} to playlist",
+                    ts::underline(&metadata.title),
+                    duration
+                )
+            } else {
+                format!(
                     "Added {}{} to playlist",
                     ts::underline(&metadata.title),
                     duration
-                ))
-                .await
-            {
+                )
+            };
+
+            if let Err(e) = self.send_message(msg).await {
                 error!(self.logger, "Failed to send message: {}", e);
             }
         }
@@ -424,12 +431,17 @@ impl MusicBot {
             format!("")
         };
 
-        self.send_message(format!(
-            "Playing {} {}",
-            ts::underline(&metadata.title),
-            duration
-        ))
-        .await?;
+        let msg = if metadata.uri.starts_with(FILE_PREFIX) {
+            format!(
+                "Playing local file {} {}",
+                ts::underline(&metadata.title),
+                duration
+            )
+        } else {
+            format!("Playing {} {}", ts::underline(&metadata.title), duration)
+        };
+
+        self.send_message(msg).await?;
         self.set_description(format!("Currently playing '{}'", metadata.title))
             .await;
         self.player.reset().unwrap();
