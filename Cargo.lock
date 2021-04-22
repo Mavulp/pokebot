@@ -2306,7 +2306,7 @@ checksum = "3831453b3449ceb48b6d9c7ad7c96d5ea673e9b470a1dc578c2ce6521230884c"
 
 [[package]]
 name = "pokebot"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "actix",
  "actix-files",
