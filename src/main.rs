@@ -71,7 +71,7 @@ pub struct Args {
 #[tokio::main]
 async fn main() {
     let root_logger = {
-        let config = log4rs::load_config_file("log4rs.yml", Default::default()).unwrap();
+        let config = log4rs::config::load_config_file("log4rs.yml", Default::default()).unwrap();
         let drain = LogBridge(log4rs::Logger::new(config)).fuse();
         // slog_async adds a channel because log4rs if not unwind safe
         let drain = slog_async::Async::new(drain)
@@ -120,13 +120,12 @@ async fn run(root_logger: Logger) -> Result<(), anyhow::Error> {
     }
 
     if config.id.is_none() {
-        let id = Identity::create().expect("Failed to create id");
-        config.id = Some(id);
+        config.id = Some(Identity::create());
     }
 
     if let Some(count) = args.gen_id_count {
         for _ in 0..count {
-            let id = Identity::create().expect("Failed to create id");
+            let id = Identity::create();
             if let Some(ids) = &mut config.ids {
                 ids.push(id);
             } else {
@@ -144,14 +143,14 @@ async fn run(root_logger: Logger) -> Result<(), anyhow::Error> {
     if let Some(level) = args.wanted_level {
         if let Some(id) = &mut config.id {
             info!(root_logger, "Upgrading master identity");
-            id.upgrade_level(level).expect("can upgrade level");
+            id.upgrade_level(level);
         }
 
         if let Some(ids) = &mut config.ids {
             let len = ids.len();
             for (i, id) in ids.iter_mut().enumerate() {
                 info!(root_logger, "Upgrading bot identity"; "current" => i + 1, "amount" => len);
-                id.upgrade_level(level).expect("can upgrade level");
+                id.upgrade_level(level);
             }
         }
 

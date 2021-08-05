@@ -42,10 +42,10 @@ fn add_uri_src_new_pad_callback(
 ) {
     uri_src.connect_pad_added(move |_, new_pad| {
         debug!(logger, "New pad received on decode bin");
-        let name = if let Some(caps) = new_pad.get_current_caps() {
+        let name = if let Some(caps) = new_pad.current_caps() {
             debug!(logger, "Found caps"; "caps" => caps.to_string());
-            if let Some(structure) = caps.get_structure(0) {
-                Some(structure.get_name().to_string())
+            if let Some(structure) = caps.structure(0) {
+                Some(structure.name().to_string())
             } else {
                 None
             }
@@ -54,7 +54,7 @@ fn add_uri_src_new_pad_callback(
         };
 
         if let Some("audio/x-raw") = name.as_deref() {
-            if let Some(peer) = ghost_pad.get_peer() {
+            if let Some(peer) = ghost_pad.peer() {
                 peer.unlink(&ghost_pad).unwrap();
             }
 
@@ -73,7 +73,7 @@ impl AudioPlayer {
         info!(logger, "Creating audio player");
 
         let pipeline = gst::Pipeline::new(Some("TeamSpeak Audio Player"));
-        let bus = pipeline.get_bus().unwrap();
+        let bus = pipeline.bus().unwrap();
         let uri_src = make_element("uridecodebin", "uri source")?;
         let volume = make_element("volume", "volume")?;
 
@@ -106,7 +106,7 @@ impl AudioPlayer {
         let queue = make_element("queue", "audio queue")?;
         let convert = make_element("audioconvert", "audio converter")?;
         let resample = make_element("audioresample", "audio resampler")?;
-        let pads = queue.get_sink_pads();
+        let pads = queue.sink_pads();
         let queue_sink_pad = pads.first().unwrap();
 
         audio_bin.add_many(&[&queue, &convert, &self.volume, &resample])?;
@@ -126,7 +126,7 @@ impl AudioPlayer {
             let callbacks = AppSinkCallbacks::builder()
                 .new_sample(move |sink| {
                     let sample = sink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
-                    let buffer = sample.get_buffer().ok_or(gst::FlowError::Error)?;
+                    let buffer = sample.buffer().ok_or(gst::FlowError::Error)?;
                     let map = buffer.map_readable().map_err(|_| gst::FlowError::Error)?;
                     let samples = map.as_slice();
 
@@ -238,7 +238,8 @@ impl AudioPlayer {
                     .pipeline
                     .query_position::<gst::ClockTime>()
                     .ok_or(AudioPlayerError::SeekError)?;
-                Duration::from_nanos(pos.nanoseconds().ok_or(AudioPlayerError::SeekError)?)
+
+                Duration::from_nanos(pos.nseconds())
             }
             _ => Duration::new(0, 0),
         };
@@ -275,7 +276,7 @@ impl AudioPlayer {
     }
 
     pub fn is_started(&self) -> bool {
-        let (_, current, pending) = self.pipeline.get_state(gst::ClockTime(None));
+        let (_, current, pending) = self.pipeline.state(gst::ClockTime::NONE);
 
         match (current, pending) {
             (gst::State::Null, gst::State::VoidPending) => false,
@@ -292,7 +293,7 @@ impl AudioPlayer {
     pub fn position(&self) -> Option<Duration> {
         self.pipeline
             .query_position::<gst::ClockTime>()
-            .and_then(|t| t.0.map(Duration::from_nanos))
+            .map(|t| Duration::from_nanos(t.nseconds()))
     }
 
     pub fn currently_playing(&self) -> Option<AudioMetadata> {
@@ -300,7 +301,7 @@ impl AudioPlayer {
     }
 
     pub fn register_bot(&self, bot: WeakAddress<MusicBot>) {
-        let pipeline_name = self.pipeline.get_name();
+        let pipeline_name = self.pipeline.name();
         debug!(self.logger, "Setting sync handler on gstreamer bus");
 
         let logger = self.logger.clone();
@@ -310,15 +311,15 @@ impl AudioPlayer {
 
             match msg.view() {
                 MessageView::StateChanged(state) => {
-                    if let Some(src) = state.get_src() {
-                        if src.get_name() != pipeline_name {
+                    if let Some(src) = state.src() {
+                        if src.name() != pipeline_name {
                             return gst::BusSyncReply::Drop;
                         }
                     }
 
-                    let old = state.get_old();
-                    let current = state.get_current();
-                    let pending = state.get_pending();
+                    let old = state.old();
+                    let current = state.current();
+                    let pending = state.pending();
 
                     match (old, current, pending) {
                         (gst::State::Paused, gst::State::Playing, gst::State::VoidPending) => {
@@ -353,18 +354,18 @@ impl AudioPlayer {
                     warn!(
                         logger,
                         "Received warning from bus";
-                        "source" => warn.get_src().map(|s| s.get_path_string().as_str().to_owned()),
-                        "error" => %warn.get_error(),
-                        "debug" => warn.get_debug()
+                        "source" => warn.src().map(|s| s.path_string().as_str().to_owned()),
+                        "error" => %warn.error(),
+                        "debug" => warn.debug()
                     );
                 }
                 MessageView::Error(err) => {
                     error!(
                         logger,
                         "Received error from bus";
-                        "source" => err.get_src().map(|s| s.get_path_string().as_str().to_owned()),
-                        "error" => %err.get_error(),
-                        "debug" => err.get_debug()
+                        "source" => err.src().map(|s| s.path_string().as_str().to_owned()),
+                        "error" => %err.error(),
+                        "debug" => err.debug()
                     );
 
                     send_state(&handle, &bot, State::EndOfStream);

@@ -80,7 +80,6 @@ fn get_message(event: &Event) -> Option<MusicBotMessage> {
             }
             _ => None,
         },
-        _ => None,
     }
 }
 
@@ -110,7 +109,7 @@ impl TeamSpeakConnection {
                 use SyncStreamItem::*;
 
                 match item {
-                    Ok(ConEvents(events)) => {
+                    Ok(BookEvents(events)) => {
                         for event in &events {
                             if let Some(msg) = get_message(event) {
                                 // FIXME Errors are just getting dropped
@@ -119,6 +118,9 @@ impl TeamSpeakConnection {
                         }
                     }
                     Err(e) => error!(ev_logger, "Error occured during event reading: {}", e),
+                    Ok(MessageEvent(_)) => {
+                        trace!(ev_logger, "Message event was received");
+                    }
                     Ok(DisconnectedTemporarily(r)) => {
                         debug!(ev_logger, "Temporary disconnect"; "reason" => ?r)
                     }
@@ -133,6 +135,9 @@ impl TeamSpeakConnection {
                     }
                     Ok(NetworkStatsUpdated) => {
                         trace!(ev_logger, "Network stats updated");
+                    }
+                    Ok(AudioChange(_)) => {
+                        trace!(ev_logger, "Audio status changed");
                     }
                 }
             }
