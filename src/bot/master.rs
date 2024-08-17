@@ -49,7 +49,6 @@ impl MasterBot {
         info!(logger, "Starting in TeamSpeak mode");
 
         let mut con_config = Connection::build(args.address.clone())
-            .logger(logger.clone())
             .version(tsclientlib::Version::Linux_3_3_2)
             .name(args.master_name.clone())
             .identity(args.id.expect("identity should exist"))

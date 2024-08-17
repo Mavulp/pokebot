@@ -148,7 +148,6 @@ impl MusicBot {
         }
 
         let opt = Connection::build(args.address)
-            .logger(args.logger.clone())
             .version(tsclientlib::Version::Linux_3_3_2)
             .name(format!("🎵 {}", args.name))
             .identity(args.identity)
