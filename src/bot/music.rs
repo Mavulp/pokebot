@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::anyhow;
+use askama::filters::urlencode;
 use async_trait::async_trait;
 use serde::Serialize;
 use slog::{debug, error, info, trace, warn, Logger};
@@ -73,6 +74,7 @@ impl Message for MusicBotMessage {
     type Result = anyhow::Result<()>;
 }
 
+#[derive(Debug)]
 pub enum AudioLocation {
     Url(String),
     YoutubeSearch(String),
@@ -724,7 +726,7 @@ impl Handler<MusicBotMessage> for MusicBot {
 fn metadata_from_file(path: &Path, user: &str) -> Result<AudioMetadata, anyhow::Error> {
     match path.extension().and_then(|s| s.to_str()) {
         Some("mp3") => {
-            let tag = id3::Tag::read_from_path(&path)?;
+            let tag = id3::Tag::read_from_path(path)?;
             let title = match (tag.title(), tag.artist()) {
                 (Some(title), Some(artist)) => format!("{} - {}", title, artist),
                 (Some(title), _) => title.to_owned(),
@@ -744,7 +746,11 @@ fn metadata_from_file(path: &Path, user: &str) -> Result<AudioMetadata, anyhow::
             }
 
             return Ok(AudioMetadata {
-                uri: format!("{}{}", FILE_PREFIX, path.to_string_lossy()),
+                uri: format!(
+                    "{}{}",
+                    FILE_PREFIX,
+                    urlencode(&path.to_string_lossy()).expect("it cant fail")
+                ),
                 webpage_url: None,
                 title,
                 thumbnail: cover,
@@ -753,7 +759,7 @@ fn metadata_from_file(path: &Path, user: &str) -> Result<AudioMetadata, anyhow::
             });
         }
         Some("flac") => {
-            let tag = metaflac::Tag::read_from_path(&path)?;
+            let tag = metaflac::Tag::read_from_path(path)?;
             let comments = &tag
                 .vorbis_comments()
                 .ok_or_else(|| anyhow!("no vorbis comments found"))?;
@@ -776,7 +782,11 @@ fn metadata_from_file(path: &Path, user: &str) -> Result<AudioMetadata, anyhow::
             }
 
             return Ok(AudioMetadata {
-                uri: format!("{}{}", FILE_PREFIX, path.to_string_lossy()),
+                uri: format!(
+                    "{}{}",
+                    FILE_PREFIX,
+                    urlencode(&path.to_string_lossy()).expect("it cant fail")
+                ),
                 webpage_url: None,
                 title,
                 thumbnail: cover,
