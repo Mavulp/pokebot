@@ -453,7 +453,13 @@ impl MusicBot {
     }
 
     async fn find_local_file(&self, query: &Vec<String>) -> Option<PathBuf> {
-        let known_exts = [OsStr::new("mp3"), OsStr::new("flac")];
+        let known_exts = [
+            OsStr::new("mp3"),
+            OsStr::new("flac"),
+            OsStr::new("mkv"),
+            OsStr::new("wav"),
+            OsStr::new("opus"),
+        ];
 
         if let Some(music_root) = &self.music_root {
             let mut largest = (None, 0);
