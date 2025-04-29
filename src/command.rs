@@ -26,6 +26,7 @@ pub enum Command {
         query: Vec<String>,
     },
     /// Starts audio playback
+    #[structopt(alias = "unpause")]
     Play,
     /// Pauses audio playback
     Pause,
