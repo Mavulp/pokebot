@@ -59,7 +59,7 @@ impl<'a> LazyLog<'a> {
     }
 }
 
-impl<'a> fmt::Display for LazyLog<'a> {
+impl fmt::Display for LazyLog<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.record.msg())?;
 

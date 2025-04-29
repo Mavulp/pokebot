@@ -227,8 +227,8 @@ impl MusicBot {
 
     async fn on_text(&mut self, message: ChatMessage) -> anyhow::Result<()> {
         let msg = message.text;
-        if msg.starts_with('!') {
-            let tokens = msg[1..].split_whitespace().collect::<Vec<_>>();
+        if let Some(command) = msg.strip_prefix('!') {
+            let tokens = command.split_whitespace().collect::<Vec<_>>();
 
             match Command::from_iter_safe(&tokens) {
                 Ok(args) => self.on_command(args, message.invoker).await?,
@@ -258,8 +258,8 @@ impl MusicBot {
                 // strip bbcode tags from url
                 let url = url.join(" ").replace("[URL]", "").replace("[/URL]", "");
 
-                let location = if url.starts_with(FILE_PREFIX) {
-                    AudioLocation::Path(PathBuf::from(&url[FILE_PREFIX.len()..]))
+                let location = if let Some(path) = url.strip_prefix(FILE_PREFIX) {
+                    AudioLocation::Path(PathBuf::from(path))
                 } else {
                     AudioLocation::Url(url)
                 };
@@ -331,7 +331,7 @@ impl MusicBot {
                 let path = match path.canonicalize() {
                     Ok(p) => p,
                     Err(e) => {
-                        return Err(anyhow!("Invalid path: {}", e)).into();
+                        return Err(anyhow!("Invalid path: {}", e));
                     }
                 };
 
@@ -380,7 +380,7 @@ impl MusicBot {
             let duration = if let Some(duration) = metadata.duration {
                 format!(" ({})", ts::bold(&humantime::format_duration(duration)))
             } else {
-                format!("")
+                String::new()
             };
 
             let msg = if metadata.uri.starts_with(FILE_PREFIX) {
@@ -420,7 +420,7 @@ impl MusicBot {
             Err(e) => {
                 info!(self.logger, "Failed to find audio url"; "error" => &e);
 
-                Err(anyhow!("Failed to find url: {}", e)).into()
+                Err(anyhow!("Failed to find url: {}", e))
             }
         }
     }
@@ -429,7 +429,7 @@ impl MusicBot {
         let duration = if let Some(duration) = metadata.duration {
             format!("({})", ts::bold(&humantime::format_duration(duration)))
         } else {
-            format!("")
+            String::new()
         };
 
         let msg = if metadata.uri.starts_with(FILE_PREFIX) {

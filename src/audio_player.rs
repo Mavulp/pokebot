@@ -30,8 +30,8 @@ pub struct AudioPlayer {
 }
 
 fn make_element(factoryname: &str, display_name: &str) -> Result<gst::Element, AudioPlayerError> {
-    Ok(gst::ElementFactory::make(factoryname, Some(display_name))
-        .map_err(|_| AudioPlayerError::MissingPlugin(factoryname.to_string()))?)
+    gst::ElementFactory::make(factoryname, Some(display_name))
+        .map_err(|_| AudioPlayerError::MissingPlugin(factoryname.to_string()))
 }
 
 fn add_uri_src_new_pad_callback(
@@ -44,11 +44,8 @@ fn add_uri_src_new_pad_callback(
         debug!(logger, "New pad received on decode bin");
         let name = if let Some(caps) = new_pad.current_caps() {
             debug!(logger, "Found caps"; "caps" => caps.to_string());
-            if let Some(structure) = caps.structure(0) {
-                Some(structure.name().to_string())
-            } else {
-                None
-            }
+            caps.structure(0)
+                .map(|structure| structure.name().to_string())
         } else {
             None
         };
@@ -66,6 +63,7 @@ fn add_uri_src_new_pad_callback(
     });
 }
 
+type AudioCallback = dyn FnMut(&[u8]) + Send;
 impl AudioPlayer {
     pub fn new(logger: Logger) -> Result<Self, AudioPlayerError> {
         GST_INIT.call_once(|| gst::init().unwrap());
@@ -98,7 +96,7 @@ impl AudioPlayer {
 
     pub fn setup_with_audio_callback(
         &self,
-        callback: Option<Box<dyn FnMut(&[u8]) + Send>>,
+        callback: Option<Box<AudioCallback>>,
     ) -> Result<(), AudioPlayerError> {
         self.pipeline.add(&self.uri_src)?;
 
@@ -191,7 +189,7 @@ impl AudioPlayer {
             VolumeChange::Negative(vol) => self.volume_f64 - vol,
             VolumeChange::Absolute(vol) => vol,
         };
-        let new_volume = new_volume.max(0.0).min(1.0);
+        let new_volume = new_volume.clamp(0.0, 1.0);
 
         self.volume_f64 = new_volume;
         let db = 50.0 * new_volume.log10();
@@ -200,7 +198,7 @@ impl AudioPlayer {
         let linear =
             StreamVolume::convert_volume(StreamVolumeFormat::Db, StreamVolumeFormat::Linear, db);
 
-        self.volume.set_property("volume", &linear)?;
+        self.volume.set_property("volume", linear)?;
 
         Ok(())
     }
@@ -278,12 +276,12 @@ impl AudioPlayer {
     pub fn is_started(&self) -> bool {
         let (_, current, pending) = self.pipeline.state(gst::ClockTime::NONE);
 
-        match (current, pending) {
-            (gst::State::Null, gst::State::VoidPending) => false,
-            (_, gst::State::Null) => false,
-            (gst::State::Ready, gst::State::VoidPending) => false,
-            _ => true,
-        }
+        !matches!(
+            (current, pending),
+            (gst::State::Null, gst::State::VoidPending)
+                | (_, gst::State::Null)
+                | (gst::State::Ready, gst::State::VoidPending)
+        )
     }
 
     pub fn volume(&self) -> f64 {

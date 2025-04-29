@@ -34,11 +34,11 @@ pub async fn get_audio_download_from_url(
     logger: &Logger,
 ) -> Result<AudioMetadata, String> {
     //youtube-dl sometimes just fails, so we give it a second try
-    let ytdl_output = match run_youtube_dl(&url, &logger).await {
+    let ytdl_output = match run_youtube_dl(&url, logger).await {
         Ok(o) => o,
         Err(e) => {
             if e.contains("Unable to extract video data") {
-                run_youtube_dl(&url, &logger).await?
+                run_youtube_dl(&url, logger).await?
             } else {
                 return Err(e);
             }
@@ -51,10 +51,10 @@ pub async fn get_audio_download_from_url(
 }
 
 async fn run_youtube_dl(url: &str, logger: &Logger) -> Result<String, String> {
-    let ytdl_args = ["--no-playlist", "-f", "bestaudio/best", "-j", &url];
+    let ytdl_args = ["--no-playlist", "-f", "bestaudio/best", "-j", url];
 
     let mut cmd = Command::new("youtube-dl");
-    cmd.args(&ytdl_args);
+    cmd.args(ytdl_args);
     cmd.stdin(Stdio::null());
 
     debug!(logger, "running yt-dl"; "command" => ?cmd);

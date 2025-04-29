@@ -154,12 +154,12 @@ impl TeamSpeakConnection {
             handle
                 .as_mut()
                 .expect("connect_for_bot was called")
-                .with_connection(|mut conn| {
+                .with_connection(|conn| {
                     conn.get_state()
                         .expect("can get state")
                         .server
                         .set_subscribed(true)
-                        .send(&mut conn)
+                        .send(conn)
                 })
                 .await
                 .and_then(|v| v)
@@ -290,12 +290,12 @@ impl TeamSpeakConnection {
         self.handle
             .as_mut()
             .expect("connect_for_bot was called")
-            .with_connection(move |mut conn| {
+            .with_connection(move |conn| {
                 conn.get_state()
                     .expect("can get state")
                     .client_update()
                     .set_name(&name)
-                    .send(&mut conn)
+                    .send(conn)
             })
             .await??;
 
@@ -307,7 +307,7 @@ impl TeamSpeakConnection {
             .handle
             .as_mut()
             .expect("connect_for_bot was called")
-            .with_connection(move |mut conn| {
+            .with_connection(move |conn| {
                 let state = conn.get_state().expect("can get state");
                 state
                     .clients
@@ -315,7 +315,7 @@ impl TeamSpeakConnection {
                     .expect("can get myself")
                     .edit()
                     .set_description(&desc)
-                    .send(&mut conn)
+                    .send(conn)
             })
             .await
             .and_then(|v| v)
@@ -328,11 +328,11 @@ impl TeamSpeakConnection {
         self.handle
             .as_mut()
             .expect("connect_for_bot was called")
-            .with_connection(move |mut conn| {
+            .with_connection(move |conn| {
                 conn.get_state()
                     .expect("can get state")
                     .send_message(MessageTarget::Channel, &text)
-                    .send(&mut conn)
+                    .send(conn)
             })
             .await??;
 
@@ -347,11 +347,11 @@ impl TeamSpeakConnection {
         self.handle
             .as_mut()
             .expect("connect_for_bot was called")
-            .with_connection(move |mut conn| {
+            .with_connection(move |conn| {
                 conn.get_state()
                     .expect("can get state")
                     .send_message(MessageTarget::Client(client), &text)
-                    .send(&mut conn)
+                    .send(conn)
             })
             .await??;
 

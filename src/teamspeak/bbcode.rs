@@ -8,7 +8,7 @@ pub enum BbCode<'a> {
     Link(&'a dyn Display, &'a str),
 }
 
-impl<'a> Display for BbCode<'a> {
+impl Display for BbCode<'_> {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), Error> {
         match self {
             BbCode::Bold(text) => fmt.write_fmt(format_args!("[B]{}[/B]", text))?,
