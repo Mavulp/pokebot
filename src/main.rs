@@ -1,27 +1,25 @@
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::thread;
 
-use slog::{debug, error, info, o, Drain, Logger};
-use slog_async::OverflowStrategy;
+use slog::{debug, error, info, o, Logger};
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
 #[cfg(unix)]
 use tokio::signal::unix::*;
+use tokio::sync::oneshot;
+use tracing_slog::TracingSlogDrain;
 use tsclientlib::Identity;
 
 mod audio_player;
 mod bot;
 mod command;
-mod log_bridge;
 mod playlist;
 mod teamspeak;
 mod web_server;
 mod youtube_dl;
 
 use bot::{MasterArgs, MasterBot, MusicBot, MusicBotArgs, Quit};
-use log_bridge::LogBridge;
 
 #[derive(StructOpt, Debug)]
 #[structopt(global_settings = &[AppSettings::ColoredHelp])]
@@ -70,24 +68,9 @@ pub struct Args {
 
 #[tokio::main]
 async fn main() {
-    let root_logger = {
-        let config = log4rs::config::load_config_file("log4rs.yml", Default::default()).unwrap();
-        let drain = LogBridge(log4rs::Logger::new(config)).fuse();
-        // slog_async adds a channel because log4rs if not unwind safe
-        let drain = slog_async::Async::new(drain)
-            .overflow_strategy(OverflowStrategy::Block)
-            .build()
-            .fuse();
+    let root_logger = Logger::root(TracingSlogDrain, o!());
 
-        Logger::root(drain, o!())
-    };
-
-    let scope_guard = slog_scope::set_global_logger(root_logger.clone());
-    // On SIGTERM the logger resets for some reason which makes the bot panic
-    // if it tries to log anything
-    scope_guard.cancel_reset();
-
-    slog_stdlog::init().unwrap();
+    tracing_subscriber::fmt::init();
 
     if let Err(e) = run(root_logger.clone()).await {
         error!(root_logger, "{}", e);
@@ -196,19 +179,24 @@ async fn run(root_logger: Logger) -> Result<(), anyhow::Error> {
         ctrl_c.await??;
     } else {
         let webserver_enable = bot_args.webserver_enable;
-        let domain = bot_args.domain.clone();
         let bind_address = bot_args.bind_address.clone();
         let bot_name = bot_args.master_name.clone();
         let bot_logger = root_logger.new(o!("master" => bot_name.clone()));
         let bot = MasterBot::spawn(bot_args, bot_logger).await;
 
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+
         if webserver_enable {
             let web_args = web_server::WebServerArgs {
-                domain,
                 bind_address,
                 bot: bot.downgrade(),
             };
-            spawn_web_server(web_args, root_logger.new(o!("webserver" => bot_name)));
+            let web_logger = root_logger.new(o!("webserver" => bot_name));
+            tokio::spawn(async move {
+                if let Err(e) = web_server::start(web_args, web_logger.clone(), shutdown_rx).await {
+                    error!(web_logger, "Error in web server"; "error" => %e);
+                }
+            });
         }
 
         #[cfg(unix)]
@@ -231,6 +219,8 @@ async fn run(root_logger: Logger) -> Result<(), anyhow::Error> {
         #[cfg(windows)]
         ctrl_c.await??;
 
+        shutdown_tx.send(()).unwrap();
+
         bot.send(Quit(String::from("Stopping")))
             .await
             .unwrap()
@@ -238,14 +228,6 @@ async fn run(root_logger: Logger) -> Result<(), anyhow::Error> {
     }
 
     Ok(())
-}
-
-pub fn spawn_web_server(args: web_server::WebServerArgs, logger: Logger) {
-    thread::spawn(move || {
-        if let Err(e) = web_server::start(args, logger.clone()) {
-            error!(logger, "Error in web server"; "error" => %e);
-        }
-    });
 }
 
 #[cfg(unix)]

@@ -1,4 +1,7 @@
-use actix_web::{get, web, HttpResponse, Responder, ResponseError};
+use axum::extract::Path;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::{Extension, Json};
 use derive_more::Display;
 use serde::Serialize;
 use xtra::WeakAddress;
@@ -6,20 +9,20 @@ use xtra::WeakAddress;
 use crate::web_server::{BotDataListRequest, BotDataRequest};
 use crate::MasterBot;
 
-#[get("/bots")]
-pub async fn get_bot_list(bot: web::Data<WeakAddress<MasterBot>>) -> impl Responder {
+use super::BotData;
+
+pub async fn get_bot_list(Extension(bot): Extension<WeakAddress<MasterBot>>) -> Json<Vec<BotData>> {
     let bot_datas = bot.send(BotDataListRequest).await.unwrap();
 
-    web::Json(bot_datas)
+    Json(bot_datas)
 }
 
-#[get("/bots/{name}")]
 pub async fn get_bot(
-    bot: web::Data<WeakAddress<MasterBot>>,
-    name: web::Path<String>,
-) -> impl Responder {
-    if let Some(bot_data) = bot.send(BotDataRequest(name.into_inner())).await.unwrap() {
-        Ok(web::Json(bot_data))
+    Extension(bot): Extension<WeakAddress<MasterBot>>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    if let Some(bot_data) = bot.send(BotDataRequest(name)).await.unwrap() {
+        Ok(Json(bot_data))
     } else {
         Err(ApiErrorKind::NotFound)
     }
@@ -37,13 +40,17 @@ enum ApiErrorKind {
     NotFound,
 }
 
-impl ResponseError for ApiErrorKind {
-    fn error_response(&self) -> HttpResponse {
-        match *self {
-            ApiErrorKind::NotFound => HttpResponse::NotFound().json(ApiError {
-                error: self.to_string(),
-                description: String::from("The requested resource was not found"),
-            }),
+impl IntoResponse for ApiErrorKind {
+    fn into_response(self) -> Response {
+        match self {
+            ApiErrorKind::NotFound => (
+                StatusCode::NOT_FOUND,
+                Json(ApiError {
+                    error: self.to_string(),
+                    description: String::from("The requested resource was not found"),
+                }),
+            )
+                .into_response(),
         }
     }
 }

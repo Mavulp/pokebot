@@ -1,10 +1,16 @@
 use std::time::Duration;
 
-use actix_slog::StructuredLogger;
-use actix_web::{get, post, web, App, HttpServer, Responder};
-use askama_actix::{Template, TemplateIntoResponse};
+use askama::Template;
+use axum::extract::Path;
+use axum::response::{Html, IntoResponse};
+use axum::routing::{get, get_service, post};
+use axum::{Extension, Form, Router};
 use serde::{Deserialize, Serialize};
 use slog::Logger;
+use tokio::sync::oneshot;
+use tower_http::cors::CorsLayer;
+use tower_http::services::ServeDir;
+use tower_http::trace::TraceLayer;
 use xtra::WeakAddress;
 
 use crate::bot::MasterBot;
@@ -19,33 +25,37 @@ pub use bot_data::*;
 use front_end_cookie::FrontEnd;
 
 pub struct WebServerArgs {
-    pub domain: String,
     pub bind_address: String,
     pub bot: WeakAddress<MasterBot>,
 }
 
-#[actix_rt::main]
-pub async fn start(args: WebServerArgs, logger: Logger) -> std::io::Result<()> {
+pub async fn start(
+    args: WebServerArgs,
+    logger: Logger,
+    shutdown_rx: oneshot::Receiver<()>,
+) -> std::io::Result<()> {
     let bot = args.bot;
     let bind_address = args.bind_address;
 
-    HttpServer::new(move || {
-        App::new()
-            .data(bot.clone())
-            .wrap(StructuredLogger::new(logger.clone()))
-            .service(index)
-            .service(get_bot)
-            .service(post_front_end)
-            .service(
-                web::scope("/api")
-                    .service(api::get_bot_list)
-                    .service(api::get_bot),
-            )
-            .service(web::scope("/docs").service(get_api_docs))
-            .service(actix_files::Files::new("/static", "web_server/static/"))
+    // FIXME: Add logging
+    let listener = tokio::net::TcpListener::bind(&bind_address).await?;
+    axum::serve(
+        listener,
+        Router::new()
+            .route("/", get(index))
+            .route("/bot/{name}", get(get_bot))
+            .route("/api/bots/", get(api::get_bot_list))
+            .route("/api/bots/{name}", get(api::get_bot))
+            .route("/docs/api", get(get_api_docs))
+            .route("/front-end", post(post_front_end))
+            .nest_service("/static", get_service(ServeDir::new("web_server/static")))
+            .layer(CorsLayer::permissive())
+            .layer(TraceLayer::new_for_http())
+            .layer(Extension(bot.clone())),
+    )
+    .with_graceful_shutdown(async {
+        shutdown_rx.await.unwrap();
     })
-    .bind(bind_address)?
-    .run()
     .await?;
 
     Ok(())
@@ -57,9 +67,8 @@ struct FrontEndForm {
     front_end: FrontEnd,
 }
 
-#[post("/front-end")]
-async fn post_front_end(form: web::Form<FrontEndForm>) -> impl Responder {
-    front_end_cookie::set_front_end(form.into_inner().front_end).await
+async fn post_front_end(Form(form): Form<FrontEndForm>) -> impl IntoResponse {
+    front_end_cookie::set_front_end(form.front_end)
 }
 
 #[derive(Debug, Serialize)]
@@ -72,23 +81,21 @@ pub struct BotData {
     pub playlist: Vec<AudioMetadata>,
 }
 
-#[get("/")]
-async fn index(bot: web::Data<WeakAddress<MasterBot>>, front: FrontEnd) -> impl Responder {
+async fn index(Extension(bot): Extension<WeakAddress<MasterBot>>, front: FrontEnd) -> Html<String> {
     match front {
         FrontEnd::Default => default::index(bot).await,
         FrontEnd::Tmtu => tmtu::index(bot).await,
     }
 }
 
-#[get("/bot/{name}")]
 async fn get_bot(
-    bot: web::Data<WeakAddress<MasterBot>>,
-    name: web::Path<String>,
+    Extension(bot): Extension<WeakAddress<MasterBot>>,
+    Path(name): Path<String>,
     front: FrontEnd,
-) -> impl Responder {
+) -> impl IntoResponse {
     match front {
-        FrontEnd::Default => default::get_bot(bot, name.into_inner()).await,
-        FrontEnd::Tmtu => tmtu::get_bot(bot, name.into_inner()).await,
+        FrontEnd::Default => default::get_bot(bot, name).await,
+        FrontEnd::Tmtu => tmtu::get_bot(bot, name).await,
     }
 }
 
@@ -96,15 +103,17 @@ async fn get_bot(
 #[template(path = "docs/api.htm")]
 struct ApiDocsTemplate;
 
-#[get("/api")]
-async fn get_api_docs() -> impl Responder {
-    ApiDocsTemplate.into_response()
+async fn get_api_docs() -> Html<String> {
+    Html(ApiDocsTemplate.render().unwrap())
 }
 
 mod filters {
     use std::time::Duration;
 
-    pub fn fmt_duration(duration: &Option<Duration>) -> Result<String, askama::Error> {
+    pub fn fmt_duration(
+        duration: &Option<Duration>,
+        _: &dyn askama::Values,
+    ) -> Result<String, askama::Error> {
         if let Some(duration) = duration {
             let secs = duration.as_secs();
             let mins = secs / 60;

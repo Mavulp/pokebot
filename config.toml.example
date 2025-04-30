@@ -18,7 +18,6 @@ volume = 0.3
 
 # Web server settings
 webserver_enable = true
-domain = "localhost"
 bind_address = "127.0.0.1:45538"
 
 # Names for the music bots

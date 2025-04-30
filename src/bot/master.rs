@@ -36,7 +36,6 @@ pub struct MasterArgs {
     pub volume: f64,
     #[serde(default = "default_verbose")]
     pub verbose: u8,
-    pub domain: String,
     pub bind_address: String,
     pub webserver_enable: bool,
     pub names: Vec<String>,
@@ -351,7 +350,6 @@ impl MasterArgs {
             names: self.names,
             ids: self.ids,
             address,
-            domain: self.domain,
             bind_address: self.bind_address,
             webserver_enable: self.webserver_enable,
             id: self.id,

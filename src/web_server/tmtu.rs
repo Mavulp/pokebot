@@ -1,5 +1,6 @@
-use actix_web::{http::header, web, Error, HttpResponse};
-use askama_actix::{Template, TemplateIntoResponse};
+use askama::Template;
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::response::{Html, IntoResponse};
 use xtra::WeakAddress;
 
 use crate::web_server::{filters, BotData, BotDataRequest, BotNameListRequest};
@@ -12,29 +13,38 @@ struct TmtuTemplate {
     bot: Option<BotData>,
 }
 
-pub async fn index(bot: web::Data<WeakAddress<MasterBot>>) -> Result<HttpResponse, Error> {
+pub async fn index(bot: WeakAddress<MasterBot>) -> Html<String> {
     let bot_names = bot.send(BotNameListRequest).await.unwrap();
 
-    TmtuTemplate {
-        bot_names,
-        bot: None,
-    }
-    .into_response()
+    Html(
+        TmtuTemplate {
+            bot_names,
+            bot: None,
+        }
+        .render()
+        .unwrap(),
+    )
 }
 
 pub async fn get_bot(
-    bot: web::Data<WeakAddress<MasterBot>>,
+    bot: WeakAddress<MasterBot>,
     name: String,
-) -> Result<HttpResponse, Error> {
+) -> axum::http::Response<axum::body::Body> {
     let bot_names = bot.send(BotNameListRequest).await.unwrap();
 
     if let Some(bot) = bot.send(BotDataRequest(name)).await.unwrap() {
-        TmtuTemplate {
-            bot_names,
-            bot: Some(bot),
-        }
+        Html(
+            TmtuTemplate {
+                bot_names,
+                bot: Some(bot),
+            }
+            .render()
+            .unwrap(),
+        )
         .into_response()
     } else {
-        Ok(HttpResponse::Found().header(header::LOCATION, "/").finish())
+        let mut headers = HeaderMap::new();
+        headers.insert(header::LOCATION, HeaderValue::from_static("/"));
+        (headers, StatusCode::FOUND).into_response()
     }
 }
