@@ -1,10 +1,13 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use anyhow::anyhow;
 use askama::filters::urlencode;
 use async_trait::async_trait;
+use lofty::file::{AudioFile, TaggedFileExt};
+use lofty::picture::PictureType;
+use lofty::probe::Probe;
+use lofty::tag::Accessor;
 use serde::Serialize;
 use slog::{debug, error, info, trace, warn, Logger};
 use structopt::StructOpt;
@@ -454,12 +457,13 @@ impl MusicBot {
 
     async fn find_local_file(&self, query: &Vec<String>) -> Option<PathBuf> {
         let known_exts = [
-            OsStr::new("mp3"),
-            OsStr::new("flac"),
-            OsStr::new("mkv"),
-            OsStr::new("wav"),
-            OsStr::new("opus"),
-        ];
+            "aac", "ape", "aiff", "aif", "afc", "aifc", "mp3", "mp2", "mp1", "wav", "wave", "wv",
+            "opus", "flac", "ogg", "mp4", "m4a", "m4b", "m4p", "m4r", "m4v", "3gp", "mpc", "mp+",
+            "mpp", "spx",
+        ]
+        .iter()
+        .map(OsStr::new)
+        .collect::<Vec<_>>();
 
         if let Some(music_root) = &self.music_root {
             let mut largest = (None, 0);
@@ -730,82 +734,41 @@ impl Handler<MusicBotMessage> for MusicBot {
 }
 
 fn metadata_from_file(path: &Path, user: &str) -> Result<AudioMetadata, anyhow::Error> {
-    match path.extension().and_then(|s| s.to_str()) {
-        Some("mp3") => {
-            let tag = id3::Tag::read_from_path(path)?;
-            let title = match (tag.title(), tag.artist()) {
-                (Some(title), Some(artist)) => format!("{} - {}", title, artist),
-                (Some(title), _) => title.to_owned(),
-                (_, _) => path.file_name().unwrap().to_string_lossy().to_string(),
-            };
+    let probe = Probe::open(path)?;
+    let file = probe.read()?;
+    let tag = file
+        .primary_tag()
+        .ok_or_else(|| anyhow!("file does not contain metadata or filetype is unknown"))?;
 
-            let mut cover = None;
-            for picture in tag.pictures() {
-                if picture.picture_type == id3::frame::PictureType::CoverFront {
-                    // The image type might be wrong but it does not seem like the big browsers
-                    // care so finding the correct type does not seem like it is worth the effort.
-                    cover = Some(format!(
-                        "data:image/jpg;base64,{}",
-                        base64::encode(&picture.data)
-                    ));
-                }
-            }
+    let title = match (tag.title(), tag.artist()) {
+        (Some(title), Some(artist)) => format!("{} - {}", title, artist),
+        (Some(title), _) => title.to_string(),
+        (_, _) => path.file_name().unwrap().to_string_lossy().to_string(),
+    };
 
-            return Ok(AudioMetadata {
-                uri: format!(
-                    "{}{}",
-                    FILE_PREFIX,
-                    urlencode(&path.to_string_lossy()).expect("it cant fail")
-                ),
-                webpage_url: None,
-                title,
-                thumbnail: cover,
-                duration: tag.duration().map(|s| Duration::from_millis(s as u64)),
-                added_by: user.to_owned(),
-            });
+    let mut cover = None;
+    for picture in tag.pictures() {
+        if picture.pic_type() == PictureType::CoverFront {
+            // The image type might be wrong but it does not seem like the big browsers
+            // care so finding the correct type does not seem like it is worth the effort.
+            cover = Some(format!(
+                "data:image/jpg;base64,{}",
+                base64::encode(picture.data())
+            ));
         }
-        Some("flac") => {
-            let tag = metaflac::Tag::read_from_path(path)?;
-            let comments = &tag
-                .vorbis_comments()
-                .ok_or_else(|| anyhow!("no vorbis comments found"))?;
-            let title = match (comments.title(), comments.artist()) {
-                (Some(title), Some(artist)) => {
-                    format!("{} - {}", title.join(";"), artist.join(";"))
-                }
-                (Some(title), _) => title.join(";"),
-                (_, _) => path.file_name().unwrap().to_string_lossy().to_string(),
-            };
-
-            let mut cover = None;
-            for picture in tag.pictures() {
-                if picture.picture_type == metaflac::block::PictureType::CoverFront {
-                    cover = Some(format!(
-                        "data:image/jpg;base64,{}",
-                        base64::encode(&picture.data)
-                    ));
-                }
-            }
-
-            return Ok(AudioMetadata {
-                uri: format!(
-                    "{}{}",
-                    FILE_PREFIX,
-                    urlencode(&path.to_string_lossy()).expect("it cant fail")
-                ),
-                webpage_url: None,
-                title,
-                thumbnail: cover,
-                duration: None,
-                added_by: user.to_owned(),
-            });
-        }
-        _ => (),
     }
-
-    Err(anyhow!(
-        "file does not contain metadata or filetype is unknown"
-    ))
+    Ok(AudioMetadata {
+        uri: format!(
+            "{}{}",
+            FILE_PREFIX,
+            urlencode(&path.to_string_lossy()).expect("it cant fail")
+        ),
+        webpage_url: None,
+        title,
+        thumbnail: cover,
+        duration: Some(file.properties().duration()),
+        added_by: user.to_owned(),
+    })
 }
 
 fn spawn_stdin_reader(addr: Address<MusicBot>) {
