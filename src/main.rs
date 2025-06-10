@@ -2,13 +2,15 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
-use slog::{debug, error, info, o, Logger};
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
 #[cfg(unix)]
 use tokio::signal::unix::*;
 use tokio::sync::oneshot;
-use tracing_slog::TracingSlogDrain;
+use tracing::level_filters::LevelFilter;
+use tracing::{debug, error, info};
+use tracing::{span, Level};
+use tracing_subscriber::EnvFilter;
 use tsclientlib::Identity;
 
 mod audio_player;
@@ -68,16 +70,18 @@ pub struct Args {
 
 #[tokio::main]
 async fn main() {
-    let root_logger = Logger::root(TracingSlogDrain, o!());
+    let filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy();
 
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt().with_env_filter(filter).init();
 
-    if let Err(e) = run(root_logger.clone()).await {
-        error!(root_logger, "{}", e);
+    if let Err(e) = run().await {
+        error!("{}", e);
     }
 }
 
-async fn run(root_logger: Logger) -> Result<(), anyhow::Error> {
+async fn run() -> Result<(), anyhow::Error> {
     // Parse command line options
     let args = Args::from_args();
 
@@ -125,14 +129,14 @@ async fn run(root_logger: Logger) -> Result<(), anyhow::Error> {
 
     if let Some(level) = args.wanted_level {
         if let Some(id) = &mut config.id {
-            info!(root_logger, "Upgrading master identity");
+            info!("Upgrading master identity");
             id.upgrade_level(level);
         }
 
         if let Some(ids) = &mut config.ids {
             let len = ids.len();
             for (i, id) in ids.iter_mut().enumerate() {
-                info!(root_logger, "Upgrading bot identity"; "current" => i + 1, "amount" => len);
+                info!("current" = i + 1, "amount" = len, "Upgrading bot identity");
                 id.upgrade_level(level);
             }
         }
@@ -145,18 +149,15 @@ async fn run(root_logger: Logger) -> Result<(), anyhow::Error> {
     }
 
     if config.id.is_none() || config.ids.is_none() {
-        error!(
-            root_logger,
-            "Failed to find required identites, try running with `-g`"
-        );
+        error!("Failed to find required identites, try running with `-g`");
         return Ok(());
     }
 
     let local = args.local;
     let bot_args = config.merge(args);
 
-    info!(root_logger, "Starting PokeBot!");
-    debug!(root_logger, "Received CLI arguments"; "args" => ?std::env::args());
+    info!("Starting PokeBot!");
+    debug!(args = ?std::env::args(), "Received CLI arguments");
 
     if local {
         let name = bot_args.names[0].clone();
@@ -171,8 +172,8 @@ async fn run(root_logger: Logger) -> Result<(), anyhow::Error> {
             identity,
             channel: String::from("local"),
             verbose: bot_args.verbose,
-            logger: root_logger,
             volume: bot_args.volume,
+            span: span!(Level::ERROR, ""),
         };
         MusicBot::spawn(bot_args).await;
 
@@ -181,8 +182,8 @@ async fn run(root_logger: Logger) -> Result<(), anyhow::Error> {
         let webserver_enable = bot_args.webserver_enable;
         let bind_address = bot_args.bind_address.clone();
         let bot_name = bot_args.master_name.clone();
-        let bot_logger = root_logger.new(o!("master" => bot_name.clone()));
-        let bot = MasterBot::spawn(bot_args, bot_logger).await;
+        let bot =
+            MasterBot::spawn(bot_args, span!(Level::ERROR, "", master = bot_name.clone())).await;
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
@@ -191,10 +192,9 @@ async fn run(root_logger: Logger) -> Result<(), anyhow::Error> {
                 bind_address,
                 bot: bot.downgrade(),
             };
-            let web_logger = root_logger.new(o!("webserver" => bot_name));
             tokio::spawn(async move {
-                if let Err(e) = web_server::start(web_args, web_logger.clone(), shutdown_rx).await {
-                    error!(web_logger, "Error in web server"; "error" => %e);
+                if let Err(error) = web_server::start(web_args, shutdown_rx).await {
+                    error!(%error, "Error in web server");
                 }
             });
         }
@@ -203,16 +203,16 @@ async fn run(root_logger: Logger) -> Result<(), anyhow::Error> {
         tokio::select! {
             res = ctrl_c => {
                 res??;
-                info!(root_logger, "Received signal, shutting down"; "signal" => "SIGINT");
+                info!(signal = "SIGINT", "Received signal, shutting down");
             }
             _ = sigterm => {
-                info!(root_logger, "Received signal, shutting down"; "signal" => "SIGTERM");
+                info!(signal = "SIGTERM", "Received signal, shutting down");
             }
             _ = sighup => {
-                info!(root_logger, "Received signal, shutting down"; "signal" => "SIGHUP");
+                info!(signal = "SIGHUP", "Received signal, shutting down");
             }
             _ = sigquit => {
-                info!(root_logger, "Received signal, shutting down"; "signal" => "SIGQUIT");
+                info!(signal = "SIGQUIT", "Received signal, shutting down");
             }
         };
 

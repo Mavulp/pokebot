@@ -5,7 +5,7 @@ use tokio::process::Command;
 
 use serde::{Deserialize, Serialize};
 
-use slog::{debug, Logger};
+use tracing::{debug, Span};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AudioMetadata {
@@ -31,14 +31,14 @@ where
 
 pub async fn get_audio_download_from_url(
     url: String,
-    logger: &Logger,
+    span: &Span,
 ) -> Result<AudioMetadata, String> {
     //youtube-dl sometimes just fails, so we give it a second try
-    let ytdl_output = match run_youtube_dl(&url, logger).await {
+    let ytdl_output = match run_youtube_dl(&url, span).await {
         Ok(o) => o,
         Err(e) => {
             if e.contains("Unable to extract video data") {
-                run_youtube_dl(&url, logger).await?
+                run_youtube_dl(&url, span).await?
             } else {
                 return Err(e);
             }
@@ -50,15 +50,15 @@ pub async fn get_audio_download_from_url(
     Ok(output)
 }
 
-async fn run_youtube_dl(url: &str, logger: &Logger) -> Result<String, String> {
+async fn run_youtube_dl(url: &str, span: &Span) -> Result<String, String> {
     let ytdl_args = ["--no-playlist", "-f", "bestaudio/best", "-j", url];
 
-    let mut cmd = Command::new("youtube-dl");
-    cmd.args(ytdl_args);
-    cmd.stdin(Stdio::null());
+    let mut command = Command::new("yt-dl");
+    command.args(ytdl_args);
+    command.stdin(Stdio::null());
 
-    debug!(logger, "running yt-dl"; "command" => ?cmd);
-    let ytdl_output = cmd.output().await.unwrap();
+    debug!(parent: span, ?command, "running yt-dl");
+    let ytdl_output = command.output().await.unwrap();
 
     if !ytdl_output.status.success() {
         let s = String::from_utf8(ytdl_output.stderr).unwrap();

@@ -6,7 +6,6 @@ use axum::response::{Html, IntoResponse};
 use axum::routing::{get, get_service, post};
 use axum::{Extension, Form, Router};
 use serde::{Deserialize, Serialize};
-use slog::Logger;
 use tokio::sync::oneshot;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
@@ -29,11 +28,7 @@ pub struct WebServerArgs {
     pub bot: WeakAddress<MasterBot>,
 }
 
-pub async fn start(
-    args: WebServerArgs,
-    logger: Logger,
-    shutdown_rx: oneshot::Receiver<()>,
-) -> std::io::Result<()> {
+pub async fn start(args: WebServerArgs, shutdown_rx: oneshot::Receiver<()>) -> std::io::Result<()> {
     let bot = args.bot;
     let bind_address = args.bind_address;
 

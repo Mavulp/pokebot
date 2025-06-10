@@ -9,8 +9,8 @@ use lofty::picture::PictureType;
 use lofty::probe::Probe;
 use lofty::tag::Accessor;
 use serde::Serialize;
-use slog::{debug, error, info, trace, warn, Logger};
 use structopt::StructOpt;
+use tracing::{debug, error, info, trace, warn, Span};
 use tsclientlib::{data, ChannelId, ClientId, Connection, Identity, Invoker, MessageTarget};
 use walkdir::WalkDir;
 use xtra::{spawn::Tokio, Actor, Address, Context, Handler, Message, WeakAddress};
@@ -64,7 +64,6 @@ pub enum MusicBotMessage {
         client: ClientId,
         old_channel: ChannelId,
     },
-    ChannelAdded(ChannelId),
     ClientAdded(ClientId),
     ClientDisconnected {
         id: ClientId,
@@ -93,7 +92,7 @@ pub struct MusicBot {
     master: Option<WeakAddress<MasterBot>>,
     playlist: Playlist,
     state: State,
-    logger: Logger,
+    span: Span,
 }
 
 pub struct MusicBotArgs {
@@ -105,27 +104,29 @@ pub struct MusicBotArgs {
     pub identity: Identity,
     pub channel: String,
     pub verbose: u8,
-    pub logger: Logger,
     pub volume: f64,
+    pub span: Span,
 }
 
 impl MusicBot {
     pub async fn spawn(args: MusicBotArgs) -> Address<Self> {
-        let mut player = AudioPlayer::new(args.logger.clone()).unwrap();
+        let mut player = AudioPlayer::new(args.span.clone()).unwrap();
         player
             .change_volume(VolumeChange::Absolute(args.volume))
             .unwrap();
 
-        let playlist = Playlist::new(args.logger.clone());
+        let playlist = Playlist::new(args.span.clone());
 
         let teamspeak = if args.local {
-            info!(args.logger, "Starting in CLI mode");
+            info!(parent: &args.span, "Starting in CLI mode");
             player.setup_with_audio_callback(None).unwrap();
 
             None
         } else {
-            Some(TeamSpeakConnection::new(args.logger.clone()).await.unwrap())
+            Some(TeamSpeakConnection::new(args.span.clone()).await.unwrap())
         };
+
+        let span = args.span.clone();
         let bot = Self {
             name: args.name.clone(),
             music_root: args.music_root,
@@ -135,20 +136,20 @@ impl MusicBot {
             teamspeak,
             playlist,
             state: State::EndOfStream,
-            logger: args.logger.clone(),
+            span: args.span,
         };
 
         let bot_addr = bot.create(None).spawn(&mut Tokio::Global);
 
         if args.local {
-            info!(args.logger, "Starting in local mode");
+            info!(parent: &span, "Starting in local mode");
         } else {
             info!(
-                args.logger,
-                "Connecting";
-                "name" => &args.name,
-                "channel" => &args.channel,
-                "address" => &args.address,
+                parent: &span,
+                name = args.name,
+                channel = args.channel,
+                address = args.address,
+                "Connecting",
             );
         }
 
@@ -163,7 +164,7 @@ impl MusicBot {
         bot_addr.send(Connect(opt)).await.unwrap().unwrap();
 
         if args.local {
-            debug!(args.logger, "Spawning stdin reader thread");
+            debug!(parent: span, "Spawning stdin reader thread");
             spawn_stdin_reader(bot_addr.clone());
         }
 
@@ -201,7 +202,7 @@ impl MusicBot {
     }
 
     async fn send_message(&mut self, text: String) -> anyhow::Result<()> {
-        debug!(self.logger, "Sending message to TeamSpeak"; "message" => &text);
+        debug!(parent: &self.span, message = &text, "Sending message to TeamSpeak");
 
         if let Some(ts) = &mut self.teamspeak {
             ts.send_message_to_channel(text).await?;
@@ -211,7 +212,7 @@ impl MusicBot {
     }
 
     async fn set_nickname(&mut self, name: String) -> anyhow::Result<()> {
-        info!(self.logger, "Setting TeamSpeak nickname"; "name" => &name);
+        info!(parent: &self.span, name, "Setting TeamSpeak nickname");
 
         if let Some(ts) = &mut self.teamspeak {
             ts.set_nickname(name).await?;
@@ -220,11 +221,11 @@ impl MusicBot {
         Ok(())
     }
 
-    async fn set_description(&mut self, desc: String) {
-        info!(self.logger, "Setting TeamSpeak description"; "description" => &desc);
+    async fn set_description(&mut self, description: String) {
+        info!(parent: &self.span, description, "Setting TeamSpeak description");
 
         if let Some(ts) = &mut self.teamspeak {
-            ts.set_description(desc).await;
+            ts.set_description(description).await;
         }
     }
 
@@ -246,7 +247,7 @@ impl MusicBot {
     }
 
     async fn on_command(&mut self, command: Command, invoker: Invoker) -> anyhow::Result<()> {
-        debug!(self.logger, "User command: {:?}", command);
+        debug!(parent: &self.span, "User command: {:?}", command);
         match command {
             Command::Play => {
                 if !self.player.is_started() {
@@ -293,17 +294,17 @@ impl MusicBot {
                     self.send_message(format!("New position: {}", ts::bold(&time)))
                         .await?;
                 }
-                Err(e) => {
-                    warn!(self.logger, "Failed to seek"; "error" => %e);
+                Err(error) => {
+                    warn!(parent: &self.span, %error, "Failed to seek");
                     self.send_message(String::from("Failed to seek")).await?;
                 }
             },
             Command::Next => {
                 if !self.playlist.is_empty() {
-                    info!(self.logger, "Skipping to next track");
+                    info!(parent: &self.span, "Skipping to next track");
                     self.player.stop_current()?;
                 } else {
-                    info!(self.logger, "Playlist empty, cannot skip");
+                    info!(parent: &self.span, "Playlist empty, cannot skip");
                     self.player.reset()?;
                 }
             }
@@ -347,7 +348,7 @@ impl MusicBot {
                     Ok(m) => m,
                     Err(e) => {
                         warn!(
-                            self.logger,
+                            parent: &self.span,
                             "No metadata was found for {}: {}",
                             path.to_string_lossy(),
                             e
@@ -401,7 +402,7 @@ impl MusicBot {
             };
 
             if let Err(e) = self.send_message(msg).await {
-                error!(self.logger, "Failed to send message: {}", e);
+                error!(parent: &self.span, "Failed to send message: {}", e);
             }
         }
 
@@ -413,15 +414,15 @@ impl MusicBot {
         query: String,
         user: String,
     ) -> anyhow::Result<AudioMetadata> {
-        match crate::youtube_dl::get_audio_download_from_url(query, &self.logger).await {
+        match crate::youtube_dl::get_audio_download_from_url(query, &self.span).await {
             Ok(mut metadata) => {
                 metadata.added_by = user;
-                info!(self.logger, "Found source"; "uri" => &metadata.uri);
+                info!(parent: &self.span, uri = &metadata.uri, "Found source");
 
                 Ok(metadata)
             }
             Err(e) => {
-                info!(self.logger, "Failed to find audio url"; "error" => &e);
+                info!(parent: &self.span, error = &e, "Failed to find audio url");
 
                 Err(anyhow!("Failed to find url: {}", e))
             }
@@ -470,7 +471,7 @@ impl MusicBot {
 
             'outer: for entry in WalkDir::new(music_root) {
                 if let Err(e) = entry {
-                    warn!(self.logger, "Failed to access file system entry: {}", e);
+                    warn!(parent: &self.span, "Failed to access file system entry: {}", e);
                     continue;
                 }
                 let entry = entry.unwrap();
@@ -507,7 +508,7 @@ impl MusicBot {
                 }
 
                 if score > largest.1 {
-                    trace!(self.logger, "Found better score {} for {}", score, path_str);
+                    trace!(parent: &self.span, "Found better score {} for {}", score, path_str);
                     largest = (Some(rel_path.to_path_buf()), score);
                 }
             }
@@ -562,7 +563,7 @@ impl MusicBot {
                     self.player.reset()?;
                     let next_track = self.playlist.pop();
                     if let Some(request) = next_track {
-                        info!(self.logger, "Advancing playlist");
+                        info!(parent: &self.span, "Advancing playlist");
 
                         self.start_playing_audio(request).await?;
                     } else {
@@ -617,7 +618,7 @@ impl MusicBot {
     }
 
     pub async fn quit(&mut self, reason: String, inform_master: bool) -> anyhow::Result<()> {
-        // FIXME logs errors if the bot is playing something because it tries to
+        // FIXME: logs errors if the bot is playing something because it tries to
         // change its name and description
         self.player.reset().unwrap();
 

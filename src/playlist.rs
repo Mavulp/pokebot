@@ -1,24 +1,28 @@
 use std::collections::VecDeque;
 
-use slog::{info, Logger};
+use tracing::{info, Span};
 
 use crate::youtube_dl::AudioMetadata;
 
 pub struct Playlist {
     data: VecDeque<AudioMetadata>,
-    logger: Logger,
+    span: Span,
 }
 
 impl Playlist {
-    pub fn new(logger: Logger) -> Self {
+    pub fn new(span: Span) -> Self {
         Self {
             data: VecDeque::new(),
-            logger,
+            span,
         }
     }
 
     pub fn push(&mut self, data: AudioMetadata) {
-        info!(self.logger, "Adding to playlist"; "title" => &data.title);
+        info!(
+            parent: &self.span,
+            title = &data.title,
+            "Adding to playlist"
+        );
 
         self.data.push_front(data)
     }
@@ -26,9 +30,9 @@ impl Playlist {
     pub fn pop(&mut self) -> Option<AudioMetadata> {
         let res = self.data.pop_back();
         info!(
-            self.logger,
-            "Popping from playlist";
-            "title" => res.as_ref().map(|r| &r.title)
+            parent: &self.span,
+            title = res.as_ref().map(|r| &r.title),
+            "Popping from playlist",
         );
 
         res
@@ -51,6 +55,6 @@ impl Playlist {
     pub fn clear(&mut self) {
         self.data.clear();
 
-        info!(self.logger, "Cleared playlist")
+        info!(parent: &self.span, "Cleared playlist");
     }
 }

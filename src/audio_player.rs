@@ -8,7 +8,8 @@ use gstreamer_app::{AppSink, AppSinkCallbacks};
 use gstreamer_audio::{StreamVolume, StreamVolumeFormat};
 
 use glib::BoolError;
-use slog::{debug, error, info, warn, Logger};
+use tracing::Span;
+use tracing::{debug, error, info, warn};
 use xtra::WeakAddress;
 
 use crate::bot::{MusicBot, MusicBotMessage, State};
@@ -26,7 +27,7 @@ pub struct AudioPlayer {
     volume: gst::Element,
     currently_playing: Option<AudioMetadata>,
 
-    logger: Logger,
+    span: Span,
 }
 
 fn make_element(factoryname: &str, display_name: &str) -> Result<gst::Element, AudioPlayerError> {
@@ -38,12 +39,12 @@ fn add_uri_src_new_pad_callback(
     uri_src: &gst::Element,
     audio_bin: gst::Bin,
     ghost_pad: gst::GhostPad,
-    logger: Logger,
+    span: Span,
 ) {
     uri_src.connect_pad_added(move |_, new_pad| {
-        debug!(logger, "New pad received on decode bin");
+        debug!(parent: &span, "New pad received on decode bin");
         let name = if let Some(caps) = new_pad.current_caps() {
-            debug!(logger, "Found caps"; "caps" => caps.to_string());
+            debug!(parent: &span, caps = caps.to_string(), "Found caps");
             caps.structure(0)
                 .map(|structure| structure.name().to_string())
         } else {
@@ -55,7 +56,7 @@ fn add_uri_src_new_pad_callback(
                 peer.unlink(&ghost_pad).unwrap();
             }
 
-            info!(logger, "Found raw audio, linking audio bin");
+            info!(parent: &span, "Found raw audio, linking audio bin");
             new_pad.link(&ghost_pad).unwrap();
 
             audio_bin.sync_state_with_parent().unwrap();
@@ -65,10 +66,10 @@ fn add_uri_src_new_pad_callback(
 
 type AudioCallback = dyn FnMut(&[u8]) + Send;
 impl AudioPlayer {
-    pub fn new(logger: Logger) -> Result<Self, AudioPlayerError> {
+    pub fn new(span: Span) -> Result<Self, AudioPlayerError> {
         GST_INIT.call_once(|| gst::init().unwrap());
 
-        info!(logger, "Creating audio player");
+        info!(parent: &span, "Creating audio player");
 
         let pipeline = gst::Pipeline::new(Some("TeamSpeak Audio Player"));
         let bus = pipeline.bus().unwrap();
@@ -87,10 +88,11 @@ impl AudioPlayer {
             pipeline,
             bus,
             uri_src,
-            logger,
             volume_f64: 0.0,
             volume,
             currently_playing: None,
+
+            span,
         })
     }
 
@@ -161,7 +163,7 @@ impl AudioPlayer {
             &self.uri_src,
             audio_bin.clone(),
             ghost_pad,
-            self.logger.clone(),
+            self.span.clone(),
         );
 
         self.pipeline.add(&audio_bin)?;
@@ -176,9 +178,9 @@ impl AudioPlayer {
         Ok(())
     }
 
-    fn set_source_uri(&self, location: String) -> Result<(), AudioPlayerError> {
-        info!(self.logger, "Setting source"; "uri" => &location);
-        self.uri_src.set_property("uri", &location)?;
+    fn set_source_uri(&self, uri: String) -> Result<(), AudioPlayerError> {
+        info!(parent: &self.span, uri, "Setting source");
+        self.uri_src.set_property("uri", uri)?;
 
         Ok(())
     }
@@ -193,7 +195,7 @@ impl AudioPlayer {
 
         self.volume_f64 = new_volume;
         let db = 50.0 * new_volume.log10();
-        info!(self.logger, "Setting volume"; "volume" => new_volume, "db" => db);
+        info!(parent: &self.span, new_volume, db, "Setting volume");
 
         let linear =
             StreamVolume::convert_volume(StreamVolumeFormat::Db, StreamVolumeFormat::Linear, db);
@@ -204,7 +206,7 @@ impl AudioPlayer {
     }
 
     pub fn reset(&mut self) -> Result<(), AudioPlayerError> {
-        info!(self.logger, "Setting pipeline state"; "to" => "null");
+        info!(parent: &self.span, to = "null", "Setting pipeline state");
 
         self.currently_playing = None;
 
@@ -214,7 +216,7 @@ impl AudioPlayer {
     }
 
     pub fn play(&self) -> Result<(), AudioPlayerError> {
-        info!(self.logger, "Setting pipeline state"; "to" => "playing");
+        info!(parent: &self.span, to = "playing", "Setting pipeline state");
 
         self.pipeline.set_state(gst::State::Playing)?;
 
@@ -222,7 +224,7 @@ impl AudioPlayer {
     }
 
     pub fn pause(&self) -> Result<(), AudioPlayerError> {
-        info!(self.logger, "Setting pipeline state"; "to" => "paused");
+        info!(parent: &self.span, to = "paused", "Setting pipeline state");
 
         self.pipeline.set_state(gst::State::Paused)?;
 
@@ -255,7 +257,7 @@ impl AudioPlayer {
         };
 
         let time = humantime::format_duration(absolute);
-        info!(self.logger, "Seeking"; "time" => %time);
+        info!(parent: &self.span, %time, "Seeking");
 
         self.pipeline.seek_simple(
             gst::SeekFlags::FLUSH,
@@ -266,7 +268,7 @@ impl AudioPlayer {
     }
 
     pub fn stop_current(&self) -> Result<(), AudioPlayerError> {
-        info!(self.logger, "Stopping pipeline, sending EOS");
+        info!(parent: &self.span, "Stopping pipeline, sending EOS");
 
         self.bus.post(&gst::message::Eos::new())?;
 
@@ -300,9 +302,9 @@ impl AudioPlayer {
 
     pub fn register_bot(&self, bot: WeakAddress<MusicBot>) {
         let pipeline_name = self.pipeline.name();
-        debug!(self.logger, "Setting sync handler on gstreamer bus");
+        debug!(parent: &self.span, "Setting sync handler on gstreamer bus");
 
-        let logger = self.logger.clone();
+        let span = self.span.clone();
         let handle = tokio::runtime::Handle::current();
         self.bus.set_sync_handler(move |_, msg| {
             use gst::MessageView;
@@ -334,36 +336,36 @@ impl AudioPlayer {
                         }
                         _ => {
                             debug!(
-                                logger,
-                                "Pipeline transitioned";
-                                "from" => ?old,
-                                "to" => ?current,
-                                "pending" => ?pending
+                                parent: &span,
+                                from = ?old,
+                                to = ?current,
+                                pending = ?pending,
+                                "Pipeline transitioned"
                             );
                         }
                     }
                 }
                 MessageView::Eos(..) => {
-                    info!(logger, "End of stream reached");
+                    info!(parent: &span, "End of stream reached");
 
                     send_state(&handle, &bot, State::EndOfStream);
                 }
                 MessageView::Warning(warn) => {
                     warn!(
-                        logger,
-                        "Received warning from bus";
-                        "source" => warn.src().map(|s| s.path_string().as_str().to_owned()),
-                        "error" => %warn.error(),
-                        "debug" => warn.debug()
+                        parent: &span,
+                        source = warn.src().map(|s| s.path_string().as_str().to_owned()),
+                        error = %warn.error(),
+                        debug = warn.debug(),
+                        "Received warning from bus"
                     );
                 }
                 MessageView::Error(err) => {
                     error!(
-                        logger,
-                        "Received error from bus";
-                        "source" => err.src().map(|s| s.path_string().as_str().to_owned()),
-                        "error" => %err.error(),
-                        "debug" => err.debug()
+                        parent: &span,
+                        source = err.src().map(|s| s.path_string().as_str().to_owned()),
+                        error = %err.error(),
+                        debug = err.debug(),
+                        "Received error from bus"
                     );
 
                     send_state(&handle, &bot, State::EndOfStream);

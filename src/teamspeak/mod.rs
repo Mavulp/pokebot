@@ -8,7 +8,7 @@ use tsclientlib::{
     ChannelId, ClientId, ConnectOptions, DisconnectOptions, MessageTarget, OutCommandExt, Reason,
 };
 
-use slog::{debug, error, info, trace, warn, Logger};
+use tracing::{debug, error, info, trace, warn, Span};
 
 use crate::bot::{ChatMessage, MusicBotMessage};
 
@@ -19,7 +19,7 @@ pub use bbcode::*;
 #[derive(Clone)]
 pub struct TeamSpeakConnection {
     handle: Option<SyncConnectionHandle>,
-    logger: Logger,
+    span: Span,
 }
 
 fn get_message(event: &Event) -> Option<MusicBotMessage> {
@@ -40,7 +40,6 @@ fn get_message(event: &Event) -> Option<MusicBotMessage> {
             invoker: _,
             extra: _,
         } => match property {
-            PropertyId::Channel(id) => Some(MusicBotMessage::ChannelAdded(*id)),
             PropertyId::Client(id) => Some(MusicBotMessage::ClientAdded(*id)),
             _ => None,
         },
@@ -84,11 +83,8 @@ fn get_message(event: &Event) -> Option<MusicBotMessage> {
 }
 
 impl TeamSpeakConnection {
-    pub async fn new(logger: Logger) -> anyhow::Result<TeamSpeakConnection> {
-        Ok(TeamSpeakConnection {
-            handle: None,
-            logger,
-        })
+    pub async fn new(span: Span) -> anyhow::Result<TeamSpeakConnection> {
+        Ok(TeamSpeakConnection { handle: None, span })
     }
 
     pub fn connect_for_bot<T: Actor + Handler<MusicBotMessage>>(
@@ -96,14 +92,14 @@ impl TeamSpeakConnection {
         options: ConnectOptions,
         bot: WeakAddress<T>,
     ) -> anyhow::Result<()> {
-        info!(self.logger, "Starting TeamSpeak connection");
+        info!(parent: &self.span, "Starting TeamSpeak connection");
 
         let conn = options.connect()?;
         let mut conn = SyncConnection::from(conn);
         let handle = conn.get_handle();
         self.handle = Some(handle);
 
-        let ev_logger = self.logger.clone();
+        let ev_span = self.span.clone();
         tokio::spawn(async move {
             while let Some(item) = conn.next().await {
                 use SyncStreamItem::*;
@@ -112,32 +108,35 @@ impl TeamSpeakConnection {
                     Ok(BookEvents(events)) => {
                         for event in &events {
                             if let Some(msg) = get_message(event) {
-                                // FIXME Errors are just getting dropped
+                                // FIXME: Errors are just getting dropped
                                 tokio::spawn(bot.send(msg));
                             }
                         }
                     }
-                    Err(e) => error!(ev_logger, "Error occured during event reading: {}", e),
+                    Err(e) => error!(
+                        parent:  &ev_span,
+                        "Error occured during event reading: {}", e
+                    ),
                     Ok(MessageEvent(_)) => {
-                        trace!(ev_logger, "Message event was received");
+                        trace!(parent: &ev_span, "Message event was received");
                     }
                     Ok(DisconnectedTemporarily(r)) => {
-                        debug!(ev_logger, "Temporary disconnect"; "reason" => ?r)
+                        debug!(parent: &ev_span, reason = ?r, "Temporary disconnect")
                     }
                     Ok(Audio(_)) => {
-                        trace!(ev_logger, "Audio received");
+                        trace!(parent: &ev_span, "Audio received");
                     }
                     Ok(IdentityLevelIncreasing(_)) => {
-                        trace!(ev_logger, "Identity level increasing");
+                        trace!(parent: &ev_span, "Identity level increasing");
                     }
                     Ok(IdentityLevelIncreased) => {
-                        trace!(ev_logger, "Identity level increased");
+                        trace!(parent: &ev_span, "Identity level increased");
                     }
                     Ok(NetworkStatsUpdated) => {
-                        trace!(ev_logger, "Network stats updated");
+                        trace!(parent: &ev_span, "Network stats updated");
                     }
                     Ok(AudioChange(_)) => {
-                        trace!(ev_logger, "Audio status changed");
+                        trace!(parent: &ev_span, "Audio status changed");
                     }
                 }
             }
@@ -303,7 +302,7 @@ impl TeamSpeakConnection {
     }
 
     pub async fn set_description(&mut self, desc: String) {
-        if let Err(e) = self
+        if let Err(error) = self
             .handle
             .as_mut()
             .expect("connect_for_bot was called")
@@ -320,7 +319,7 @@ impl TeamSpeakConnection {
             .await
             .and_then(|v| v)
         {
-            warn!(self.logger, "Failed to set description"; "error" => %e);
+            warn!(parent: &self.span, %error, "Failed to set description");
         }
     }
 

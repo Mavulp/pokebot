@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use futures::future;
 use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 use serde::{Deserialize, Serialize};
-use slog::{error, info, o, trace, Logger};
+use tracing::{error, info, span, trace, Level, Span};
 use tsclientlib::{ClientId, ConnectOptions, Connection, Identity, MessageTarget};
 use xtra::{spawn::Tokio, Actor, Address, Context, Handler, Message, WeakAddress};
 
@@ -23,7 +23,7 @@ pub struct MasterBot {
     available_ids: Vec<Identity>,
     connected_bots: HashMap<String, Address<MusicBot>>,
     rng: SmallRng,
-    logger: Logger,
+    span: Span,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -44,8 +44,8 @@ pub struct MasterArgs {
 }
 
 impl MasterBot {
-    pub async fn spawn(args: MasterArgs, logger: Logger) -> Address<Self> {
-        info!(logger, "Starting in TeamSpeak mode");
+    pub async fn spawn(args: MasterArgs, span: Span) -> Address<Self> {
+        info!(parent: &span, "Starting in TeamSpeak mode");
 
         let mut con_config = Connection::build(args.address.clone())
             .version(tsclientlib::Version::Linux_3_3_2)
@@ -59,8 +59,8 @@ impl MasterBot {
             con_config = con_config.channel(channel);
         }
 
-        let connection = TeamSpeakConnection::new(logger.clone()).await.unwrap();
-        trace!(logger, "Created teamspeak connection");
+        let connection = TeamSpeakConnection::new(span.clone()).await.unwrap();
+        trace!(parent: &span, "Created teamspeak connection");
 
         let config = MasterConfig {
             master_name: args.master_name,
@@ -74,17 +74,17 @@ impl MasterBot {
             config,
             my_addr: None,
             teamspeak: connection,
-            logger: logger.clone(),
             rng: SmallRng::from_entropy(),
             available_names: args.names,
             available_ids: args.ids.expect("identities"),
             connected_bots: HashMap::new(),
+            span: span.clone(),
         }
         .create(None)
         .spawn(&mut Tokio::Global);
 
         bot_addr.send(Connect(con_config)).await.unwrap().unwrap();
-        trace!(logger, "Spawned master bot actor");
+        trace!(parent: &span, "Spawned master bot actor");
 
         bot_addr
     }
@@ -146,7 +146,7 @@ impl MasterBot {
             local: false,
             channel: channel_path,
             verbose: self.config.verbose,
-            logger: self.logger.new(o!("musicbot" => name)),
+            span: span!(parent: &self.span, Level::ERROR, "", name),
             volume: self.config.volume,
         })
     }
@@ -171,12 +171,13 @@ impl MasterBot {
     async fn on_message(&mut self, message: MusicBotMessage) -> anyhow::Result<()> {
         match message {
             MusicBotMessage::TextMessage(message) => {
-                if let MessageTarget::Poke(who) = message.target {
+                if let MessageTarget::Poke(user) = message.target {
                     info!(
-                        self.logger,
-                        "Poked, creating bot"; "user" => %who
+                        parent: &self.span,
+                        %user,
+                        "Poked, creating bot"
                     );
-                    self.spawn_bot_for_client(who).await?;
+                    self.spawn_bot_for_client(user).await?;
                 }
             }
             MusicBotMessage::ClientAdded(id) => {
@@ -231,8 +232,8 @@ impl MasterBot {
             .values()
             .map(|b| b.send(Quit(reason.clone())));
         for res in future::join_all(futures).await {
-            if let Err(e) = res {
-                error!(self.logger, "Failed to shut down bot"; "error" => %e);
+            if let Err(error) = res {
+                error!(parent: &self.span, %error, "Failed to shut down bot");
             }
         }
         self.teamspeak.disconnect(&reason).await

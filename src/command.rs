@@ -84,7 +84,7 @@ pub enum VolumeChange {
     Absolute(f64),
 }
 
-// TODO This runs twice, report to clap?
+// TODO: This runs twice, report to clap?
 impl std::str::FromStr for VolumeChange {
     type Err = std::num::ParseFloatError;
 

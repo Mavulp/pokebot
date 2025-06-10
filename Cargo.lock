@@ -2065,12 +2065,11 @@ dependencies = [
  "rand",
  "serde",
  "serde_json",
- "slog",
  "structopt",
  "tokio",
  "toml 0.5.11",
  "tower-http",
- "tracing-slog",
+ "tracing",
  "tracing-subscriber",
  "tsclientlib",
  "tsproto-packets",
@@ -2661,12 +2660,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "slog"
-version = "2.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8347046d4ebd943127157b94d63abb990fcf729dc4e9978927fdf4ac3c998d06"
-
-[[package]]
 name = "smallvec"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3194,17 +3187,6 @@ checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
 dependencies = [
  "log",
  "once_cell",
- "tracing-core",
-]
-
-[[package]]
-name = "tracing-slog"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9306d2ca06aa9dfc8aa729ff884e9dca181f588a298cc5c59d4fdd91372570bf"
-dependencies = [
- "once_cell",
- "slog",
  "tracing-core",
 ]
 
