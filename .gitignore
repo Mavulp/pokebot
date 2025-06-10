@@ -1,4 +1,9 @@
+# rust artifacts
 /target
 **/*.rs.bk
+# config for testing
 config.toml
-log/
+# direnv cache
+.direnv
+# nix build output
+result
