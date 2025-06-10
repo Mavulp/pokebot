@@ -53,11 +53,11 @@ pub async fn get_audio_download_from_url(
 async fn run_youtube_dl(url: &str, span: &Span) -> Result<String, String> {
     let ytdl_args = ["--no-playlist", "-f", "bestaudio/best", "-j", url];
 
-    let mut command = Command::new("yt-dl");
+    let mut command = Command::new("yt-dlp");
     command.args(ytdl_args);
     command.stdin(Stdio::null());
 
-    debug!(parent: span, ?command, "running yt-dl");
+    debug!(parent: span, ?command, "running yt-dlp");
     let ytdl_output = command.output().await.unwrap();
 
     if !ytdl_output.status.success() {
